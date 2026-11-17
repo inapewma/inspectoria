@@ -2,7 +2,7 @@
  * - Hace la página instalable y rápida de abrir.
  * - NUNCA guarda en caché los datos: las llamadas a Apps Script siempre van a la red.
  */
-const VERSION = 'ceia-v3';
+const VERSION = 'ceia-v4';
 const SHELL = ['./', 'index.html', 'config.js', 'logo.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 

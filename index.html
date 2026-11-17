@@ -23,8 +23,9 @@
   <script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
   <!-- Chart.js: gráficos -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-  <!-- html2pdf.js para reportes PDF -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <!-- Reportes PDF: captura (html2canvas) + armado de páginas (jsPDF) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <!-- Configuración (URL de Apps Script) e insignia institucional -->
   <script src="config.js"></script>
   <script src="logo.js"></script>
@@ -66,6 +67,12 @@
       input, select, textarea { font-size: 16px !important; }
       button { touch-action: manipulation; }
     }
+    .role-card { border-color: #e2e8f0; background: #fff; }
+    .role-card:hover { border-color: #8cc4e8; transform: translateY(-1px); }
+    .role-card.is-active { border-color: #0a6bb0; background: #eef7fd; box-shadow: 0 0 0 3px rgba(10,107,176,.15); }
+    .user-card { transition: all .18s ease; }
+    .user-card:hover { transform: translateY(-2px); box-shadow: 0 10px 22px -12px rgba(15,23,42,.35); }
+    .user-card.is-active { border-color: #0a6bb0; background: #eef7fd; box-shadow: 0 0 0 3px rgba(10,107,176,.18); }
     .card { background:#fff; border-radius:1rem; border:1px solid rgba(226,232,240,.9); box-shadow:0 1px 2px rgba(15,23,42,.04), 0 8px 24px -12px rgba(15,23,42,.08); }
   </style>
 </head>
@@ -168,6 +175,35 @@
         </button>
         <button type="button" onclick="showLoginView('login')" class="w-full text-xs font-semibold text-slate-500 hover:text-slate-800 py-1">← Volver a iniciar sesión</button>
       </form>
+
+      <!-- Vista: cambiar contraseña (obligatorio con clave provisoria o voluntario) -->
+      <form id="change-form" onsubmit="submitChange(event)" class="hidden p-6 sm:p-7 space-y-4">
+        <img data-logo alt="Insignia CEIA Inapewma" class="h-20 w-auto mx-auto" />
+        <div class="text-center">
+          <h3 id="change-title" class="text-lg font-extrabold text-slate-900">Cambiar mi contraseña</h3>
+          <p id="change-sub" class="text-xs text-slate-500 mt-1"></p>
+        </div>
+        <div id="change-old-wrap">
+          <label for="change-old" class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">Contraseña actual</label>
+          <input id="change-old" type="password" autocomplete="current-password" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
+        </div>
+        <div>
+          <label for="change-new" class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">Nueva contraseña (mínimo 8 caracteres)</label>
+          <div class="relative">
+            <input id="change-new" type="password" minlength="8" autocomplete="new-password" required class="w-full rounded-xl border border-slate-300 pl-3.5 pr-11 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            <button type="button" onclick="toggleLoginPass('change-new')" title="Mostrar / ocultar" class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-700"><i data-lucide="eye" class="w-4 h-4"></i></button>
+          </div>
+        </div>
+        <div>
+          <label for="change-new2" class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">Repetir nueva contraseña</label>
+          <input id="change-new2" type="password" minlength="8" autocomplete="new-password" required class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
+        </div>
+        <p id="change-msg" class="hidden"></p>
+        <button id="change-btn" type="submit" class="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition shadow-sm disabled:opacity-60">
+          <i data-lucide="key-round" class="w-4 h-4"></i><span>Guardar contraseña</span>
+        </button>
+        <button id="change-cancel" type="button" onclick="cancelChange()" class="w-full text-xs font-semibold text-slate-500 hover:text-slate-800 py-1">Cancelar</button>
+      </form>
     </div>
   </div>
 
@@ -255,6 +291,9 @@
         </button>
         <button id="sync-chip" type="button" onclick="onSyncChipClick()" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold border bg-slate-50 text-slate-600 border-slate-200 transition" title="Estado de sincronización con Google Sheets">
           <span id="sync-dot" class="w-2 h-2 rounded-full bg-slate-400"></span><span id="sync-text" class="hidden sm:inline">Conectando…</span>
+        </button>
+        <button id="btn-change-pass" type="button" onclick="openChange(false)" title="Cambiar mi contraseña" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-white/15 hover:bg-white/25 transition">
+          <i data-lucide="key-round" class="w-3.5 h-3.5"></i><span class="hidden sm:inline">Contraseña</span>
         </button>
         <button id="btn-logout" type="button" onclick="logout()" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-white/15 hover:bg-white/25 transition">
           <i data-lucide="log-out" class="w-3.5 h-3.5"></i><span>Salir</span>
@@ -484,25 +523,57 @@
           </div>
           <span class="text-xs font-medium text-slate-500">Solo la cuenta principal</span>
         </div>
-        <div class="p-5 grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <form onsubmit="handleSaveUser(event)" class="bg-slate-50 rounded-xl p-4 border border-slate-200/70 space-y-3">
-            <label class="block text-xs font-bold uppercase tracking-wider text-slate-500">Crear o editar usuario</label>
-            <input id="user-name" type="text" required minlength="3" maxlength="40" autocomplete="off" placeholder="Nombre de usuario (Ej: Profesora Pérez)" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
-            <input id="user-email" type="email" required maxlength="120" autocomplete="off" placeholder="Correo (para recuperar la contraseña)" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
-            <input id="user-pass" type="password" minlength="8" maxlength="80" autocomplete="new-password" placeholder="Contraseña (mínimo 8 caracteres)" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
-            <select id="user-role" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
-              <option value="registro">Registro — solo marca asistencia</option>
-              <option value="admin">Administrador — puede modificar todo</option>
-            </select>
-            <p class="text-[11px] text-slate-500">Al editar un usuario existente, deje la contraseña vacía para conservar la actual. Solo la cuenta principal puede administrar usuarios.</p>
-            <div class="flex gap-2">
-              <button type="submit" class="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-brand-700 text-white hover:bg-brand-800 transition shadow-sm"><i data-lucide="user-plus" class="w-4 h-4"></i><span>Guardar usuario</span></button>
-              <button type="button" onclick="resetUserForm()" class="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 transition">Limpiar</button>
+        <div class="p-5 grid grid-cols-1 xl:grid-cols-5 gap-6">
+          <!-- Formulario: crear / editar -->
+          <form onsubmit="handleSaveUser(event)" class="xl:col-span-2 bg-gradient-to-br from-slate-50 to-brand-50/60 rounded-2xl p-5 border border-slate-200/70 space-y-4 self-start">
+            <div class="flex items-center justify-between">
+              <label id="user-form-title" class="block text-xs font-bold uppercase tracking-wider text-slate-500">Nuevo usuario</label>
+              <button type="button" id="user-form-clear" onclick="clearUserSelection()" class="hidden text-[11px] font-bold text-brand-700 hover:underline">+ Crear otro</button>
             </div>
+            <input id="user-name" type="text" required minlength="3" maxlength="40" autocomplete="off" placeholder="Nombre de usuario (Ej: Profesora Pérez)" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            <input id="user-email" type="email" required maxlength="120" autocomplete="off" placeholder="Correo electrónico (recibirá la invitación)" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
+
+            <div>
+              <span class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-2">Perfil de acceso</span>
+              <input type="hidden" id="user-role" value="registro" />
+              <div class="grid grid-cols-2 gap-2.5">
+                <button type="button" data-role-card="registro" onclick="setUserRole('registro')" class="role-card text-left rounded-2xl border-2 p-3 transition">
+                  <span class="w-9 h-9 rounded-xl bg-ine-green/15 text-green-700 flex items-center justify-center mb-2"><i data-lucide="clipboard-check" class="w-5 h-5"></i></span>
+                  <span class="block text-sm font-extrabold text-slate-900">Registro</span>
+                  <span class="block text-[11px] text-slate-500 leading-snug">Solo marca asistencia y ve gráficos</span>
+                </button>
+                <button type="button" data-role-card="admin" onclick="setUserRole('admin')" class="role-card text-left rounded-2xl border-2 p-3 transition">
+                  <span class="w-9 h-9 rounded-xl bg-brand-100 text-brand-700 flex items-center justify-center mb-2"><i data-lucide="shield-check" class="w-5 h-5"></i></span>
+                  <span class="block text-sm font-extrabold text-slate-900">Administrador</span>
+                  <span class="block text-[11px] text-slate-500 leading-snug">Cursos, estudiantes, configuración y asistencia</span>
+                </button>
+              </div>
+            </div>
+
+            <p id="user-form-hint" class="text-[11px] text-slate-500 leading-relaxed bg-white/70 border border-slate-200 rounded-xl px-3 py-2">
+              <i data-lucide="mail" class="w-3.5 h-3.5 inline -mt-0.5 text-brand-600"></i>
+              Al crear el usuario se enviará un correo con la insignia del CEIA, el enlace de acceso y una <strong>clave provisoria</strong>. En su primer ingreso deberá crear su propia contraseña.
+            </p>
+            <button id="user-submit" type="submit" class="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold bg-brand-700 text-white hover:bg-brand-800 transition shadow-sm disabled:opacity-60"><i data-lucide="send" class="w-4 h-4"></i><span>Crear y enviar invitación</span></button>
           </form>
-          <div class="border border-slate-200 rounded-xl overflow-hidden">
-            <div class="bg-slate-100/80 px-4 py-2.5 border-b border-slate-200 text-xs font-bold text-slate-600 uppercase tracking-wider">Usuarios registrados</div>
-            <div id="users-list" class="divide-y divide-slate-100 max-h-[300px] overflow-y-auto custom-scrollbar bg-white"></div>
+
+          <!-- Usuarios: tarjetas seleccionables -->
+          <div class="xl:col-span-3">
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Usuarios registrados · toque una tarjeta para seleccionarla</span>
+              <span id="users-count" class="text-xs font-semibold text-slate-500"></span>
+            </div>
+            <div id="users-list" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+            <div id="user-actions" class="hidden mt-4 rounded-2xl border border-brand-200 bg-brand-50/70 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div class="min-w-0">
+                <div class="text-[11px] font-bold uppercase tracking-wider text-brand-700">Usuario seleccionado</div>
+                <div id="user-actions-name" class="text-sm font-extrabold text-slate-900 truncate"></div>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <button type="button" onclick="resendInvite()" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-white text-brand-700 border border-brand-200 hover:bg-brand-100 transition"><i data-lucide="mail-plus" class="w-4 h-4"></i>Reenviar clave provisoria</button>
+                <button type="button" onclick="handleDeleteSelectedUser()" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition"><i data-lucide="trash-2" class="w-4 h-4"></i>Eliminar</button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -914,7 +985,7 @@
     }
     function showLoginView(view) {
       const prev = $('login-user').value || $('forgot-user').value || $('reset-user').value;
-      ['login', 'forgot', 'reset'].forEach(v => $(`${v}-form`).classList.toggle('hidden', v !== view));
+      ['login', 'forgot', 'reset', 'change'].forEach(v => $(`${v}-form`).classList.toggle('hidden', v !== view));
       if (view === 'forgot') { $('forgot-user').value = $('forgot-user').value || prev; $('forgot-msg').className = 'hidden'; }
       if (view === 'reset') { $('reset-user').value = $('reset-user').value || prev; $('reset-msg').className = 'hidden'; }
       refreshIcons();
@@ -990,28 +1061,84 @@
           return;
         }
         session.token = res.token; session.user = res.user; setSessionRole(res.rol, res.principal);
-        saveSession();
+        const typedPass = $('login-pass').value;
         $('login-pass').value = '';
-        const cb = loginOnSuccess;
-        const st = await loadAll();
-        if (st !== 'ok') {
-          clearSession();
-          errBox.textContent = 'Sesión válida, pero no se pudieron cargar los datos. Intente nuevamente.';
-          errBox.className = 'text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2';
+        if (res.mustChange) {            // clave provisoria: debe crear la suya antes de ver datos
+          pendingOldPass = typedPass;
+          openChange(true);
           return;
         }
-        closeLogin();
-        applyAuthUI();
-        switchMainTab(session.admin ? 'inspectoria' : 'visualizacion');
-        showToast(`Bienvenido/a, ${session.user}.`);
-        if (failedOps.length) retryFailed();
-        if (typeof cb === 'function' && session.admin) cb();
+        const ok = await completeLogin(loginOnSuccess);
+        if (!ok) {
+          errBox.textContent = 'Sesión válida, pero no se pudieron cargar los datos. Intente nuevamente.';
+          errBox.className = 'text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2';
+        }
       } catch (e) {
         errBox.textContent = 'No se pudo conectar con el servidor. Intente nuevamente.';
         errBox.className = 'text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2';
       } finally {
         btn.disabled = false;
       }
+    }
+
+    /** Carga los datos y entra a la plataforma (tras iniciar sesión o cambiar la clave provisoria). */
+    async function completeLogin(cb) {
+      saveSession();
+      const st = await loadAll();
+      if (st !== 'ok') { clearSession(); return false; }
+      closeLogin();
+      applyAuthUI();
+      switchMainTab(session.admin ? 'inspectoria' : 'visualizacion');
+      showToast(`Bienvenido/a, ${session.user}.`);
+      if (failedOps.length) retryFailed();
+      if (typeof cb === 'function' && session.admin) cb();
+      return true;
+    }
+
+    // ---------- Cambio de contraseña (obligatorio con clave provisoria, o voluntario) ----------
+    let pendingOldPass = '';
+    let changeForced = false;
+    function openChange(forced) {
+      changeForced = forced;
+      ['change-old', 'change-new', 'change-new2'].forEach(id => { $(id).value = ''; });
+      $('change-msg').className = 'hidden';
+      $('change-old-wrap').classList.toggle('hidden', forced);
+      $('change-old').required = !forced;
+      $('change-title').textContent = forced ? 'Cree su contraseña personal' : 'Cambiar mi contraseña';
+      $('change-sub').textContent = forced
+        ? 'Ingresó con una clave provisoria. Por seguridad, defina ahora su propia contraseña para continuar.'
+        : 'Ingrese su contraseña actual y la nueva.';
+      $('change-cancel').textContent = forced ? 'Cancelar y salir' : 'Cancelar';
+      const modal = $('login-modal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      showLoginView('change');
+      setTimeout(() => $(forced ? 'change-new' : 'change-old').focus(), 50);
+    }
+    function cancelChange() {
+      if (changeForced) { pendingOldPass = ''; logout(); }
+      else closeLogin();
+    }
+    async function submitChange(ev) {
+      ev.preventDefault();
+      const msg = $('change-msg'), btn = $('change-btn');
+      const n1 = $('change-new').value, n2 = $('change-new2').value;
+      if (n1 !== n2) { setMsg(msg, 'Las contraseñas nuevas no coinciden.', false); return; }
+      btn.disabled = true;
+      try {
+        const res = await callApi('changePassword', { oldPass: changeForced ? pendingOldPass : $('change-old').value, newPass: n1 });
+        if (!res.ok) {
+          if (res.error === 'SESION_EXPIRADA') { expireSession(); return; }
+          const m = { CLAVE_CORTA: 'La contraseña debe tener al menos 8 caracteres.', CLAVE_IGUAL: 'La nueva contraseña debe ser distinta de la actual.', CLAVE_ACTUAL_INCORRECTA: 'La contraseña actual es incorrecta.', BLOQUEADO: 'Demasiados intentos fallidos. Espere unos minutos.' };
+          setMsg(msg, m[res.error] || 'No fue posible cambiar la contraseña.', false);
+          return;
+        }
+        pendingOldPass = '';
+        if (changeForced) { changeForced = false; await completeLogin(null); }
+        else { closeLogin(); showToast('Contraseña actualizada.'); }
+      } catch (e) {
+        setMsg(msg, 'No se pudo conectar con el servidor. Intente nuevamente.', false);
+      } finally { btn.disabled = false; }
     }
 
     function clearSession() {
@@ -1049,6 +1176,7 @@
         : session.role === 'admin' ? 'Administrador'
         : session.role === 'registro' ? 'Registro de asistencia' : '';
       $('btn-logout').classList.toggle('hidden', DEMO);
+      $('btn-change-pass').classList.toggle('hidden', DEMO);
       if (!admin) $('section-inspectoria').classList.add('hidden');   // solo administradores ven la gestión
       refreshIcons();
     }
@@ -1100,7 +1228,7 @@
       try {
         const res = await callApi('getAll');
         if (!res.ok) {
-          if (res.error === 'LOGIN_REQUIRED') {
+          if (res.error === 'LOGIN_REQUIRED' || res.error === 'DEBE_CAMBIAR_CLAVE') {
             clearSession();
             setSync('saved');
             return 'login';
@@ -1466,71 +1594,145 @@
     }
 
     // ---------- Usuarios del sistema (cuenta principal) ----------
-    const ROLE_LABEL = { admin: 'Administrador', registro: 'Registro (solo asistencia)' };
+    const ROLE_LABEL = { admin: 'Administrador', registro: 'Registro' };
+    const AVATAR_COLORS = ['#c8242b', '#b8962a', '#067ac4', '#5a9a2f', '#555452', '#7c3aed', '#0d9488'];
     let usersCache = [];
+    let selectedUser = -1;
+
+    const initialsOf = n => String(n).trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase();
+    const avatarColor = n => AVATAR_COLORS[[...String(n)].reduce((a, c) => a + c.charCodeAt(0), 0) % AVATAR_COLORS.length];
+    /** Dirección de la plataforma (carpeta de GitHub Pages) para el enlace del correo de bienvenida. */
+    const appBaseUrl = () => location.origin + location.pathname.replace(/[^/]*$/, '');
 
     async function loadUsers() {
       const box = $('users-list');
       if (!box) return;
-      if (DEMO) { box.innerHTML = `<div class="p-6 text-center text-xs text-slate-400">La gestión de usuarios está disponible al conectar con Apps Script.</div>`; return; }
+      if (DEMO) { box.innerHTML = `<div class="col-span-full p-6 text-center text-xs text-slate-400 border border-dashed border-slate-300 rounded-2xl">La gestión de usuarios está disponible al conectar con Apps Script.</div>`; return; }
       try {
         const res = await callApi('listUsers');
-        if (res.ok) { usersCache = res.usuarios; renderUsers(); }
+        if (res.ok) { usersCache = res.usuarios; selectedUser = -1; renderUsers(); }
         else if (res.error === 'SESION_EXPIRADA') expireSession();
-      } catch (e) { box.innerHTML = `<div class="p-6 text-center text-xs text-red-500">No se pudo cargar la lista de usuarios.</div>`; }
+      } catch (e) { box.innerHTML = `<div class="col-span-full p-6 text-center text-xs text-red-500">No se pudo cargar la lista de usuarios.</div>`; }
     }
 
     function renderUsers() {
       const box = $('users-list');
-      const principalRow = `<div class="px-4 py-2.5 flex items-center justify-between gap-3 bg-slate-50/70"><div><div class="text-sm font-semibold text-slate-800">${esc(session.principal ? session.user : 'Cuenta principal')}</div><div class="text-[11px] text-slate-500">Cuenta principal · acceso total y gestión de usuarios</div></div><span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-800">Principal</span></div>`;
-      box.innerHTML = principalRow + (usersCache.length === 0
-        ? `<div class="p-5 text-center text-xs text-slate-400">Aún no hay otros usuarios. Cree el primero con el formulario.</div>`
-        : usersCache.map((u, i) => `
-          <div class="px-4 py-2.5 flex items-center justify-between gap-3 hover:bg-slate-50">
-            <div class="min-w-0"><div class="text-sm font-semibold text-slate-800 truncate">${esc(u.usuario)}</div><div class="text-[11px] text-slate-500 truncate">${esc(ROLE_LABEL[u.rol] || u.rol)} · ${esc(u.correo || 'sin correo')}</div></div>
-            <div class="flex items-center gap-1.5 shrink-0">
-              <button type="button" onclick="editUser(${i})" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-brand-700 bg-brand-50 hover:bg-brand-100 border border-brand-100">Editar</button>
-              <button type="button" onclick="handleDeleteUser(${i})" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200/70">Eliminar</button>
-            </div>
-          </div>`).join(''));
+      const principalCard = `
+        <div class="rounded-2xl border-2 border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-3.5 flex items-center gap-3">
+          <span class="w-12 h-12 rounded-2xl bg-ine-ink text-white flex items-center justify-center shrink-0 shadow-sm"><i data-lucide="shield-check" class="w-6 h-6"></i></span>
+          <span class="min-w-0 flex-1">
+            <span class="block text-sm font-extrabold text-slate-900 truncate">${esc(session.principal ? session.user : 'Cuenta principal')}</span>
+            <span class="block text-[11px] text-slate-500">Acceso total · gestiona usuarios</span>
+            <span class="mt-1.5 inline-block px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-800">Cuenta principal</span>
+          </span>
+        </div>`;
+      const cards = usersCache.map((u, i) => {
+        const c = avatarColor(u.usuario);
+        const active = i === selectedUser;
+        const roleCls = u.rol === 'admin' ? 'bg-brand-100 text-brand-800' : 'bg-green-100 text-green-800';
+        const stateCls = u.pendiente ? 'bg-amber-100 text-amber-800' : 'bg-emerald-50 text-emerald-700';
+        return `
+          <button type="button" onclick="selectUser(${i})" class="user-card ${active ? 'is-active' : ''} text-left rounded-2xl border-2 border-slate-200 bg-white p-3.5 flex items-center gap-3 w-full">
+            <span class="w-12 h-12 rounded-2xl flex items-center justify-center text-white font-extrabold text-base shrink-0 shadow-sm" style="background:linear-gradient(135deg,${c},${c}bb)">${esc(initialsOf(u.usuario))}</span>
+            <span class="min-w-0 flex-1">
+              <span class="block text-sm font-extrabold text-slate-900 truncate">${esc(u.usuario)}</span>
+              <span class="block text-[11px] text-slate-500 truncate">${esc(u.correo || 'sin correo')}</span>
+              <span class="mt-1.5 flex flex-wrap gap-1.5">
+                <span class="px-2 py-0.5 rounded-md text-[10px] font-bold ${roleCls}">${esc(ROLE_LABEL[u.rol] || u.rol)}</span>
+                <span class="px-2 py-0.5 rounded-md text-[10px] font-bold ${stateCls}">${u.pendiente ? 'Clave provisoria pendiente' : 'Activo'}</span>
+              </span>
+            </span>
+            ${active ? '<i data-lucide="check-circle-2" class="w-5 h-5 text-brand-600 shrink-0"></i>' : '<i data-lucide="circle" class="w-5 h-5 text-slate-300 shrink-0"></i>'}
+          </button>`;
+      }).join('');
+      box.innerHTML = principalCard + (cards || `<div class="rounded-2xl border-2 border-dashed border-slate-300 p-5 text-center text-xs text-slate-400 flex items-center justify-center">Aún no hay otros usuarios. Cree el primero con el formulario.</div>`);
+      $('users-count').textContent = `${usersCache.length + 1} cuenta${usersCache.length ? 's' : ''}`;
+      const sel = usersCache[selectedUser];
+      $('user-actions').classList.toggle('hidden', !sel);
+      if (sel) $('user-actions-name').textContent = `${sel.usuario} · ${sel.correo || 'sin correo'}`;
+      refreshIcons();
+    }
+
+    function setUserRole(role) {
+      $('user-role').value = role;
+      document.querySelectorAll('[data-role-card]').forEach(b => b.classList.toggle('is-active', b.dataset.roleCard === role));
     }
 
     function resetUserForm() {
-      $('user-name').value = ''; $('user-pass').value = ''; $('user-email').value = ''; $('user-role').value = 'registro';
-      $('user-name').readOnly = false;
+      $('user-name').value = ''; $('user-email').value = ''; $('user-name').readOnly = false;
+      setUserRole('registro');
+      $('user-form-title').textContent = 'Nuevo usuario';
+      $('user-form-clear').classList.add('hidden');
+      $('user-form-hint').classList.remove('hidden');
+      $('user-submit').querySelector('span').textContent = 'Crear y enviar invitación';
     }
 
-    function editUser(i) {
+    function selectUser(i) {
+      if (i === selectedUser) { clearUserSelection(); return; }
       const u = usersCache[i]; if (!u) return;
+      selectedUser = i;
       $('user-name').value = u.usuario; $('user-name').readOnly = true;
-      $('user-role').value = u.rol; $('user-pass').value = ''; $('user-email').value = u.correo || '';
-      $('user-pass').focus();
+      $('user-email').value = u.correo || '';
+      setUserRole(u.rol);
+      $('user-form-title').textContent = `Editando: ${u.usuario}`;
+      $('user-form-clear').classList.remove('hidden');
+      $('user-form-hint').classList.add('hidden');
+      $('user-submit').querySelector('span').textContent = 'Guardar cambios';
+      renderUsers();
+    }
+
+    function clearUserSelection() {
+      selectedUser = -1;
+      resetUserForm();
+      renderUsers();
+    }
+
+    async function sendSaveUser(userData) {
+      const res = await callApi('saveUser', { userData, appUrl: appBaseUrl() });
+      if (!res.ok) {
+        if (res.error === 'SESION_EXPIRADA') { expireSession(); return null; }
+        const msgs = { USUARIO_INVALIDO: 'Nombre de usuario inválido (mínimo 3 caracteres).', USUARIO_RESERVADO: 'Ese nombre está reservado para la cuenta principal.', CORREO_INVALIDO: 'Ingrese un correo válido.', ROL_INVALIDO: 'Perfil de acceso inválido.' };
+        showToast(msgs[res.error] || `No se pudo guardar el usuario (${res.error}).`, 'error');
+        return null;
+      }
+      if (res.invitado) {
+        if (res.correoEnviado) showToast(`Invitación enviada a ${userData.correo} con la clave provisoria.`);
+        else openConfirmModal('Correo no enviado', `El usuario quedó creado, pero no se pudo enviar el correo. Entregue esta clave provisoria de forma segura: ${res.claveProvisoria}  (al ingresar deberá crear su propia contraseña).`, () => {});
+      } else {
+        showToast(`Usuario "${userData.usuario}" actualizado.`);
+      }
+      return res;
     }
 
     async function handleSaveUser(ev) {
       ev.preventDefault();
       if (!session.principal || DEMO) { showToast('Solo la cuenta principal puede administrar usuarios.', 'warning'); return; }
-      const usuario = $('user-name').value.trim(), clave = $('user-pass').value, rol = $('user-role').value, correo = $('user-email').value.trim();
+      const btn = $('user-submit');
+      btn.disabled = true;
       try {
-        const res = await callApi('saveUser', { userData: { usuario, clave, rol, correo } });
-        if (!res.ok) {
-          const msgs = { CLAVE_CORTA: 'La contraseña debe tener al menos 8 caracteres.', USUARIO_INVALIDO: 'Nombre de usuario inválido (mínimo 3 caracteres).', USUARIO_RESERVADO: 'Ese nombre está reservado para la cuenta principal.', CORREO_INVALIDO: 'Ingrese un correo válido.', SESION_EXPIRADA: 'Su sesión expiró.' };
-          if (res.error === 'SESION_EXPIRADA') return expireSession();
-          showToast(msgs[res.error] || `No se pudo guardar el usuario (${res.error}).`, 'error');
-          return;
-        }
-        showToast(res.creado ? `Usuario "${usuario}" creado.` : `Usuario "${usuario}" actualizado.`);
-        resetUserForm();
-        await loadUsers();
+        const userData = { usuario: $('user-name').value.trim(), rol: $('user-role').value, correo: $('user-email').value.trim() };
+        const res = await sendSaveUser(userData);
+        if (res) { selectedUser = -1; resetUserForm(); await loadUsers(); }
       } catch (e) { showToast('Sin conexión con el servidor.', 'error'); }
+      finally { btn.disabled = false; }
     }
 
-    function handleDeleteUser(i) {
-      const u = usersCache[i]; if (!u) return;
+    function resendInvite() {
+      const u = usersCache[selectedUser]; if (!u) return;
+      openConfirmModal('Reenviar clave provisoria', `Se generará una clave provisoria nueva para "${u.usuario}" y se enviará a ${u.correo}. La clave anterior dejará de funcionar.`, async () => {
+        try {
+          const res = await sendSaveUser({ usuario: u.usuario, rol: u.rol, correo: u.correo, reenviar: true });
+          if (res) await loadUsers();
+        } catch (e) { showToast('Sin conexión con el servidor.', 'error'); }
+      });
+    }
+
+    function handleDeleteSelectedUser() {
+      const u = usersCache[selectedUser]; if (!u) return;
       openConfirmModal('Eliminar Usuario', `¿Eliminar el acceso de "${u.usuario}"? Sus sesiones abiertas dejarán de funcionar.`, async () => {
         try {
           const res = await callApi('deleteUser', { usuario: u.usuario });
-          if (res.ok) { showToast(`Usuario "${u.usuario}" eliminado.`, 'warning'); await loadUsers(); }
+          if (res.ok) { showToast(`Usuario "${u.usuario}" eliminado.`, 'warning'); resetUserForm(); await loadUsers(); }
           else showToast(`No se pudo eliminar (${res.error}).`, 'error');
         } catch (e) { showToast('Sin conexión con el servidor.', 'error'); }
       });
@@ -2492,36 +2694,92 @@
       return pdf;
     }
 
+    /**
+     * Genera el PDF completo y centrado: el informe se dibuja en un iframe aislado (sin desplazamientos ni
+     * recortes de la página), se captura con html2canvas y se reparte en hojas Carta respetando los márgenes,
+     * cortando siempre entre filas o bloques (nunca por la mitad de una fila o un gráfico).
+     */
     async function exportAnalyticsReportPDF() {
       const btn = $('btn-export-pdf');
       const originalBtnHtml = btn.innerHTML;
       btn.disabled = true;
       btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>Generando PDF...</span>`;
       refreshIcons();
-      let host = null;
+      let frame = null;
       try {
+        if (!window.html2canvas || !window.jspdf) throw new Error('Librerías de PDF no cargadas');
         const reportData = await buildPortraitLetterReportData();
         if (!reportData) { showToast('No hay datos suficientes para generar el reporte PDF.', 'warning'); return; }
-        host = document.createElement('div');
-        host.style.cssText = 'position:fixed;left:-10000px;top:0;z-index:-1;background:#fff;';
-        host.innerHTML = reportData.html;
-        document.body.appendChild(host);
-        await waitForImages(host);            // la insignia y los gráficos deben estar cargados
-        await new Promise(r => requestAnimationFrame(() => setTimeout(r, 120)));
-        await html2pdf().set({
-          margin: PDF_MARGIN,                 // [superior, izquierdo, inferior, derecho] en mm
-          filename: reportData.fileName,
-          image: { type: 'jpeg', quality: 0.96 },
-          html2canvas: { scale: 2.2, useCORS: true, logging: false, backgroundColor: '#ffffff', windowWidth: 800, scrollX: 0, scrollY: 0 },
-          jsPDF: { unit: 'mm', format: 'letter', orientation: 'portrait' },
-          pagebreak: { mode: ['css', 'legacy'], avoid: ['tr', '.avoid-break'] }
-        }).from(host.firstElementChild).toPdf().get('pdf').then(decoratePdfPages).save();
-        showToast(`Reporte PDF "${reportData.fileName}" descargado en formato Carta Vertical.`);
+
+        const W = 730;                       // ancho del informe en px (= área útil de la hoja Carta)
+        frame = document.createElement('iframe');
+        frame.setAttribute('aria-hidden', 'true');
+        frame.style.cssText = `position:fixed;left:0;top:0;width:${W}px;height:1400px;border:0;opacity:0;pointer-events:none;z-index:-1;`;
+        document.body.appendChild(frame);
+        const doc = frame.contentDocument;
+        doc.open();
+        doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet"><style>html,body{margin:0;padding:0;background:#fff}*{box-sizing:border-box}</style></head><body>${reportData.html}</body></html>`);
+        doc.close();
+        await waitForImages(doc.body);
+        try { await Promise.race([doc.fonts.ready, new Promise(r => setTimeout(r, 2500))]); } catch (e) { /* sin fuentes web */ }
+
+        const root = doc.body.firstElementChild;
+        const totalH = Math.ceil(root.getBoundingClientRect().height);
+        frame.style.height = `${totalH + 40}px`;
+        await new Promise(r => setTimeout(r, 80));
+
+        const SCALE = 2.2;
+        const canvas = await html2canvas(root, {
+          scale: SCALE, backgroundColor: '#ffffff', useCORS: true, logging: false,
+          width: W, height: totalH, windowWidth: W, windowHeight: totalH + 40, scrollX: 0, scrollY: 0
+        });
+
+        // Posiciones de filas y bloques para no cortarlos entre páginas
+        const rootTop = root.getBoundingClientRect().top;
+        const blocks = [...root.querySelectorAll('tr, .avoid-break')].map(el => {
+          const r = el.getBoundingClientRect();
+          return { top: r.top - rootTop, bottom: r.bottom - rootTop };
+        });
+
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF({ unit: 'mm', format: 'letter', orientation: 'portrait' });
+        const [mt, mr, mb, ml] = PDF_MARGIN;
+        const usableW = pdf.internal.pageSize.getWidth() - ml - mr;
+        const usableH = pdf.internal.pageSize.getHeight() - mt - mb;
+        const pxPerMm = W / usableW;
+        const pageHpx = Math.floor(usableH * pxPerMm);
+
+        const slices = [];
+        let y = 0;
+        while (y < totalH - 1) {
+          let end = Math.min(y + pageHpx, totalH);
+          if (end < totalH) {
+            const straddle = blocks.filter(b => b.top < end && b.bottom > end && b.top > y + 40).map(b => b.top);
+            if (straddle.length) end = Math.min(...straddle);
+          }
+          slices.push([y, end]);
+          y = end;
+        }
+
+        slices.forEach(([a, b], i) => {
+          if (i > 0) pdf.addPage();
+          const sh = Math.max(1, Math.round((b - a) * SCALE));
+          const part = document.createElement('canvas');
+          part.width = canvas.width; part.height = sh;
+          const pc = part.getContext('2d');
+          pc.fillStyle = '#ffffff'; pc.fillRect(0, 0, part.width, part.height);
+          pc.drawImage(canvas, 0, Math.round(a * SCALE), canvas.width, sh, 0, 0, canvas.width, sh);
+          pdf.addImage(part.toDataURL('image/jpeg', 0.95), 'JPEG', ml, mt, usableW, (b - a) / pxPerMm);
+        });
+
+        decoratePdfPages(pdf);
+        pdf.save(reportData.fileName);
+        showToast(`Reporte PDF "${reportData.fileName}" descargado (${slices.length} página${slices.length === 1 ? '' : 's'}, Carta Vertical).`);
       } catch (err) {
         console.error('Error generando PDF:', err);
         showToast('No se pudo generar el archivo PDF. Intente nuevamente.', 'error');
       } finally {
-        if (host && host.parentNode) host.parentNode.removeChild(host);
+        if (frame && frame.parentNode) frame.parentNode.removeChild(frame);
         btn.disabled = false;
         btn.innerHTML = originalBtnHtml;
         refreshIcons();
@@ -2536,6 +2794,7 @@
       document.querySelectorAll('img[data-logo]').forEach(img => { img.src = LOGO; });
       if (isIOS && !isStandalone) $('btn-install').classList.remove('hidden');
       fillMonthSelects();
+      resetUserForm();
       setSegActive('scope-group', 'btn-scope-weekly');
       setSegActive('mode-group', 'btn-mode-dots');
       $('tab-btn-inspectoria').className = NAV_OFF;
