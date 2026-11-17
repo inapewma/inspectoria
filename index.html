@@ -1,0 +1,2346 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CEIA Inapewma Coronel | Gestión de Asistencia</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+  <!-- Chart.js: gráficos -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <!-- html2pdf.js para reportes PDF -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <!-- Configuración (URL de Apps Script) e insignia institucional -->
+  <script src="config.js"></script>
+  <script src="logo.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'sans-serif'] },
+          colors: {
+            // Paleta tomada de la insignia institucional
+            brand: {
+              50: '#eef7fd', 100: '#d9edfa', 500: '#0a7cc4', 600: '#0a6bb0',
+              700: '#085a93', 800: '#06456f', 900: '#0b2f4d'
+            },
+            ine: { red: '#c8242b', gold: '#c3a932', blue: '#067ac4', green: '#78ae44', ink: '#555452' },
+            emerald: { 500: '#10b981', 600: '#059669' }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    .custom-scrollbar::-webkit-scrollbar { height: 10px; width: 8px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    .sticky-col { position: sticky; left: 0; z-index: 20; }
+    .sticky-header-col { position: sticky; left: 0; z-index: 30; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-fade-in { animation: fadeIn 0.25s ease-out forwards; }
+    body { background:
+      radial-gradient(1000px 500px at 100% -10%, rgba(6,122,196,.07), transparent 60%),
+      radial-gradient(800px 400px at -10% 0%, rgba(200,36,43,.05), transparent 60%),
+      #f8fafc; }
+    .card { background:#fff; border-radius:1rem; border:1px solid rgba(226,232,240,.9); box-shadow:0 1px 2px rgba(15,23,42,.04), 0 8px 24px -12px rgba(15,23,42,.08); }
+  </style>
+</head>
+<body class="text-slate-800 font-sans antialiased min-h-screen flex flex-col">
+
+  <!-- Pantalla de carga / error de conexión -->
+  <div id="load-overlay" class="fixed inset-0 z-[70] bg-white flex flex-col items-center justify-center gap-5 p-6 text-center">
+    <img data-logo alt="Insignia CEIA Inapewma" class="h-28 w-auto" />
+    <div id="load-spinner" class="flex items-center gap-3 text-slate-500 text-sm font-semibold">
+      <i data-lucide="loader-2" class="w-5 h-5 animate-spin text-brand-600"></i> Cargando datos de la plataforma…
+    </div>
+    <div id="load-error" class="hidden max-w-md space-y-3">
+      <p class="text-sm text-red-700 font-semibold">No se pudo conectar con el servidor de datos (Apps Script).</p>
+      <p class="text-xs text-slate-500">Revise su conexión a internet y que la URL en <code>config.js</code> sea correcta y esté implementada para "Cualquier persona".</p>
+      <button onclick="bootLoad()" class="px-4 py-2.5 rounded-xl text-sm font-bold text-white bg-brand-700 hover:bg-brand-800 transition">Reintentar</button>
+    </div>
+  </div>
+
+  <!-- Notificaciones Toast -->
+  <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none"></div>
+
+  <!-- Modal de Acceso Administrador -->
+  <div id="login-modal" class="fixed inset-0 bg-brand-900/70 backdrop-blur-sm z-[60] hidden items-center justify-center p-4">
+    <div class="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden animate-fade-in">
+      <div class="h-1.5 flex"><span class="flex-1 bg-ine-red"></span><span class="flex-1 bg-ine-gold"></span><span class="flex-1 bg-ine-blue"></span><span class="flex-1 bg-ine-green"></span></div>
+      <form id="login-form" onsubmit="submitLogin(event)" class="p-7 space-y-4">
+        <img data-logo alt="Insignia CEIA Inapewma" class="h-24 w-auto mx-auto" />
+        <div class="text-center">
+          <h3 class="text-lg font-extrabold text-slate-900">Acceso Administrador</h3>
+          <p id="login-subtitle" class="text-xs text-slate-500 mt-1">Ingrese sus credenciales para cargar y modificar datos.</p>
+        </div>
+        <div>
+          <label for="login-user" class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">Usuario</label>
+          <input id="login-user" name="username" type="text" autocomplete="username" required placeholder="Inspectoría General" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
+        </div>
+        <div>
+          <label for="login-pass" class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">Contraseña</label>
+          <div class="relative">
+            <input id="login-pass" name="password" type="password" autocomplete="current-password" required class="w-full rounded-xl border border-slate-300 pl-3.5 pr-11 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            <button type="button" onclick="toggleLoginPass()" title="Mostrar / ocultar contraseña" class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-700">
+              <i data-lucide="eye" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>
+        <p id="login-error" class="hidden text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></p>
+        <button id="login-btn" type="submit" class="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold text-white bg-brand-700 hover:bg-brand-800 transition shadow-sm disabled:opacity-60">
+          <i data-lucide="log-in" class="w-4 h-4"></i><span>Ingresar</span>
+        </button>
+        <button id="login-cancel" type="button" onclick="closeLogin()" class="w-full text-xs font-semibold text-slate-500 hover:text-slate-800 py-1">Continuar como visitante (solo consulta)</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal de Confirmación -->
+  <div id="confirm-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 animate-fade-in border border-slate-100">
+      <div class="flex items-center gap-3 text-amber-600 mb-3">
+        <div class="p-2 bg-amber-50 rounded-xl"><i data-lucide="alert-triangle" class="w-6 h-6"></i></div>
+        <h3 id="confirm-title" class="text-lg font-bold text-slate-900">Confirmar acción</h3>
+      </div>
+      <p id="confirm-message" class="text-sm text-slate-600 mb-6 leading-relaxed">¿Está seguro de realizar esta acción?</p>
+      <div class="flex justify-end gap-3">
+        <button id="confirm-cancel-btn" class="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 transition">Cancelar</button>
+        <button id="confirm-ok-btn" class="px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-red-600 hover:bg-red-700 transition shadow-sm">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Trasladar Estudiante -->
+  <div id="transfer-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 animate-fade-in border border-slate-100">
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-2.5">
+          <div class="p-2 bg-brand-50 text-brand-700 rounded-xl"><i data-lucide="arrow-left-right" class="w-5 h-5"></i></div>
+          <h3 class="text-lg font-bold text-slate-900">Trasladar Estudiante</h3>
+        </div>
+        <button onclick="closeTransferModal()" class="text-slate-400 hover:text-slate-600 p-1 rounded-lg"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <p class="text-sm text-slate-600 mb-4">Seleccione el curso de destino para <strong id="transfer-student-name" class="text-slate-900"></strong>:</p>
+      <div class="mb-6">
+        <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Curso de Destino</label>
+        <select id="transfer-target-course" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"></select>
+      </div>
+      <div class="flex justify-end gap-3">
+        <button onclick="closeTransferModal()" class="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 transition">Cancelar</button>
+        <button onclick="confirmStudentTransfer()" class="px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-brand-700 hover:bg-brand-800 transition shadow-sm">Ejecutar Traslado</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Vista Previa del Reporte (Carta Vertical) -->
+  <div id="pdf-preview-modal" class="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-50 hidden flex-col items-center justify-center p-3 sm:p-5">
+    <div class="bg-slate-100 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[94vh] flex flex-col overflow-hidden border border-slate-300 animate-fade-in">
+      <div class="bg-white px-5 py-3.5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 shrink-0">
+        <div class="flex items-center gap-2.5">
+          <div class="p-2 bg-indigo-50 text-indigo-700 rounded-xl"><i data-lucide="file-search" class="w-5 h-5"></i></div>
+          <div>
+            <h3 class="text-sm sm:text-base font-bold text-slate-900">Vista Previa de Impresión — Hoja Tamaño Carta (Vertical)</h3>
+            <p class="text-xs text-slate-500">Verifique los gráficos y la tabla de síntesis antes de descargar o imprimir.</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="printPreviewReport()" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-800 text-white hover:bg-slate-900 transition">
+            <i data-lucide="printer" class="w-4 h-4"></i><span>Imprimir</span>
+          </button>
+          <button type="button" onclick="downloadReportFromPreview()" class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-rose-600 text-white hover:bg-rose-700 transition">
+            <i data-lucide="download" class="w-4 h-4"></i><span>Descargar PDF</span>
+          </button>
+          <button type="button" onclick="closeReportPreviewModal()" class="p-2 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition" title="Cerrar vista previa">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </div>
+      <div class="flex-1 overflow-auto custom-scrollbar p-4 sm:p-6 flex justify-center bg-slate-200/80">
+        <div id="pdf-preview-sheet-container" class="bg-white shadow-xl border border-slate-300 mx-auto" style="width: 760px; min-height: 984px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Encabezado Institucional -->
+  <header class="bg-white shadow-sm lg:sticky lg:top-0 z-40">
+    <div class="h-1.5 flex"><span class="flex-1 bg-ine-red"></span><span class="flex-1 bg-ine-gold"></span><span class="flex-1 bg-ine-blue"></span><span class="flex-1 bg-ine-green"></span></div>
+    <div class="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-3">
+      <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+        <div class="flex items-center gap-4">
+          <img data-logo alt="Insignia CEIA Inapewma" class="h-14 sm:h-16 w-auto shrink-0" />
+          <div class="hidden sm:block w-px h-11 bg-slate-200"></div>
+          <div>
+            <span class="inline-block px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-ine-gold/20 text-yellow-900 rounded-md">Educación de Jóvenes y Adultos · Coronel</span>
+            <h1 class="text-lg sm:text-xl font-extrabold tracking-tight text-ine-ink leading-tight">CEIA INAPEWMA CORONEL</h1>
+            <p class="text-[11px] sm:text-xs text-slate-500">Sistema Integral de Control y Proyección de Asistencia por Bloques</p>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2.5">
+          <nav class="flex bg-slate-100 p-1 rounded-2xl border border-slate-200/70">
+            <button id="tab-btn-inspectoria" onclick="switchMainTab('inspectoria')" class="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all">
+              <i data-lucide="shield-check" class="w-4 h-4"></i>
+              <span>Cargar Datos</span>
+              <i id="tab-lock" data-lucide="lock" class="w-3.5 h-3.5 opacity-70"></i>
+            </button>
+            <button id="tab-btn-visualizacion" onclick="switchMainTab('visualizacion')" class="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all">
+              <i data-lucide="line-chart" class="w-4 h-4"></i>
+              <span>Visualizar y Gráficos</span>
+            </button>
+          </nav>
+
+          <button id="sync-chip" type="button" onclick="onSyncChipClick()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] font-bold border bg-slate-50 text-slate-600 border-slate-200 transition" title="Estado de sincronización con Google Sheets">
+            <span id="sync-dot" class="w-2 h-2 rounded-full bg-slate-400"></span><span id="sync-text">Conectando…</span>
+          </button>
+
+          <button id="btn-login" data-guest-only type="button" onclick="openLogin(true)" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-brand-700 text-white hover:bg-brand-800 transition shadow-sm">
+            <i data-lucide="log-in" class="w-4 h-4"></i><span>Acceso administrador</span>
+          </button>
+          <div data-mark-only class="hidden inline-flex items-center gap-2 pl-3 pr-1.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800">
+            <i data-lucide="user-check" class="w-4 h-4"></i>
+            <span id="auth-user-name" class="text-xs font-bold"></span>
+            <button id="btn-logout" type="button" onclick="logout()" class="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-white border border-emerald-200 hover:bg-emerald-100 transition">Salir</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+    <div id="demo-banner" class="hidden mb-5 rounded-2xl border border-amber-300 bg-amber-50 text-amber-900 px-4 py-3 text-xs sm:text-sm">
+      <strong>Modo demostración:</strong> los datos se guardan solo en este navegador. Para conectarla a Google Sheets, pegue la URL de Apps Script en <code class="bg-white/70 px-1 rounded">config.js</code>.
+    </div>
+
+    <!-- ===================== SECCIÓN 1: CARGAR DATOS (INSPECTORÍA) ===================== -->
+    <section id="section-inspectoria" class="hidden animate-fade-in space-y-6">
+
+      <div class="card p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div class="flex items-start sm:items-center gap-3.5">
+          <div class="p-3 rounded-xl bg-brand-50 text-brand-700 shrink-0"><i data-lucide="clipboard-list" class="w-6 h-6"></i></div>
+          <div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <h2 class="text-base sm:text-lg font-bold text-slate-900">Módulo de Administración — Inspectoría</h2>
+              <span class="px-2.5 py-0.5 text-xs font-semibold bg-brand-100 text-brand-800 rounded-full">Acceso Gestión</span>
+            </div>
+            <p class="text-xs sm:text-sm text-slate-500 mt-0.5">Gestione la conformación de cursos, matrícula de estudiantes y la estructura mensual de semanas, días y bloques.</p>
+          </div>
+        </div>
+        <button onclick="switchMainTab('visualizacion')" class="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition shadow-sm shrink-0">
+          <span>Ir a Visualización y Gráficos</span><i data-lucide="arrow-right" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+
+        <!-- PARTE 1 -->
+        <div class="xl:col-span-7 space-y-6">
+          <div class="card overflow-hidden">
+            <div class="px-5 py-4 bg-slate-50/80 border-b border-slate-200/80 flex items-center justify-between">
+              <div class="flex items-center gap-2.5">
+                <span class="w-7 h-7 rounded-lg bg-brand-700 text-white text-xs font-bold flex items-center justify-center">1</span>
+                <h3 class="font-bold text-slate-900 text-base">Conformación de Cursos y Estudiantes</h3>
+              </div>
+              <span id="total-courses-badge" class="text-xs font-semibold px-2.5 py-1 rounded-lg bg-slate-200/70 text-slate-700">0 Cursos activos</span>
+            </div>
+
+            <div class="p-5 space-y-6">
+              <form onsubmit="handleCreateCourse(event)" class="bg-slate-50 rounded-xl p-4 border border-slate-200/70">
+                <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Crear / Conformar Nuevo Curso</label>
+                <div class="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                  <div class="sm:col-span-6">
+                    <input id="new-course-name" type="text" required maxlength="120" placeholder="Ej: 1° Nivel Medio A (Vespertino)" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                  </div>
+                  <div class="sm:col-span-3">
+                    <select id="new-course-shift" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                      <option value="Mañana">Jornada Mañana</option>
+                      <option value="Tarde">Jornada Tarde</option>
+                      <option value="Vespertina">Jornada Vespertina</option>
+                    </select>
+                  </div>
+                  <div class="sm:col-span-3">
+                    <button type="submit" class="w-full h-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold bg-brand-700 text-white hover:bg-brand-800 transition shadow-sm">
+                      <i data-lucide="plus-circle" class="w-4 h-4"></i><span>Crear Curso</span>
+                    </button>
+                  </div>
+                </div>
+              </form>
+
+              <div class="space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div class="flex-1">
+                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Seleccionar Curso para Gestionar Nómina</label>
+                    <select id="manage-course-select" onchange="handleSelectManageCourse(this.value)" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm font-semibold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"></select>
+                  </div>
+                  <div class="sm:pt-5 flex items-center gap-2">
+                    <button type="button" onclick="handleDeleteCurrentCourse()" class="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200/70 transition">
+                      <i data-lucide="trash-2" class="w-4 h-4"></i><span>Eliminar Curso</span>
+                    </button>
+                  </div>
+                </div>
+
+                <form onsubmit="handleAddStudent(event)" class="grid grid-cols-1 sm:grid-cols-12 gap-3 pt-2">
+                  <div class="sm:col-span-6">
+                    <input id="new-student-name" type="text" required maxlength="120" placeholder="Nombre completo del estudiante (Apellidos, Nombres)" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                  </div>
+                  <div class="sm:col-span-3">
+                    <input id="new-student-rut" type="text" maxlength="20" placeholder="RUT (Ej: 18.452.110-K)" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                  </div>
+                  <div class="sm:col-span-3">
+                    <button type="submit" class="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition shadow-sm">
+                      <i data-lucide="user-plus" class="w-4 h-4"></i><span>Incorporar</span>
+                    </button>
+                  </div>
+                </form>
+
+                <div class="border border-slate-200 rounded-xl overflow-hidden">
+                  <div class="bg-slate-100/80 px-4 py-2.5 border-b border-slate-200 flex items-center justify-between text-xs font-bold text-slate-600 uppercase tracking-wider">
+                    <span>Nómina de Estudiantes del Curso</span>
+                    <span id="course-student-count" class="text-brand-700">0 Estudiantes</span>
+                  </div>
+                  <div id="manage-students-list" class="divide-y divide-slate-100 max-h-[340px] overflow-y-auto custom-scrollbar bg-white"></div>
+                </div>
+
+                <div class="border border-slate-200 rounded-xl overflow-hidden">
+                  <button type="button" onclick="toggleRetiredList()" class="w-full bg-slate-100/80 px-4 py-2.5 flex items-center justify-between text-xs font-bold text-slate-600 uppercase tracking-wider hover:bg-slate-100">
+                    <span>Estudiantes retirados (no aparecen en planillas ni gráficos)</span>
+                    <span id="retired-count" class="text-slate-500">0</span>
+                  </button>
+                  <div id="retired-students-list" class="hidden divide-y divide-slate-100 max-h-[260px] overflow-y-auto custom-scrollbar bg-white"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PARTE 2 -->
+        <div class="xl:col-span-5 space-y-6">
+          <div class="card overflow-hidden">
+            <div class="px-5 py-4 bg-slate-50/80 border-b border-slate-200/80 flex items-center justify-between">
+              <div class="flex items-center gap-2.5">
+                <span class="w-7 h-7 rounded-lg bg-ine-gold text-slate-900 text-xs font-extrabold flex items-center justify-center">2</span>
+                <h3 class="font-bold text-slate-900 text-base">Configuración Mensual de Bloques</h3>
+              </div>
+              <span class="text-xs font-medium text-slate-500">Inicio de Mes</span>
+            </div>
+
+            <div class="p-5 space-y-5">
+              <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                Defina al inicio de cada mes lectivo (<strong>Marzo a Diciembre</strong>) la estructura de semanas, días hábiles por semana y bloques horarios diarios para proyectar la planilla.
+              </p>
+
+              <div>
+                <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Curso a Configurar</label>
+                <select id="config-course-select" onchange="loadMonthConfigIntoForm()" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm font-semibold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"></select>
+              </div>
+
+              <div>
+                <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Mes Académico</label>
+                <select id="config-month-select" onchange="loadMonthConfigIntoForm()" class="month-select w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm font-semibold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"></select>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-1">
+                <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
+                  <label class="block text-xs font-bold text-slate-700 mb-1">Semanas del Mes</label>
+                  <input id="cfg-weeks" type="number" min="1" max="6" value="4" oninput="updateConfigPreviewCard()" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-base font-bold text-center text-brand-800 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                  <span class="block text-[11px] text-slate-400 text-center mt-1">1 a 6 semanas</span>
+                </div>
+                <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
+                  <label class="block text-xs font-bold text-slate-700 mb-1">Días / Semana</label>
+                  <input id="cfg-days" type="number" min="1" max="7" value="5" oninput="updateConfigPreviewCard()" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-base font-bold text-center text-brand-800 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                  <span class="block text-[11px] text-slate-400 text-center mt-1">1 a 7 días</span>
+                </div>
+                <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
+                  <label class="block text-xs font-bold text-slate-700 mb-1">Bloques / Día</label>
+                  <input id="cfg-blocks" type="number" min="1" max="12" value="4" oninput="updateConfigPreviewCard()" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-base font-bold text-center text-brand-800 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                  <span class="block text-[11px] text-slate-400 text-center mt-1">1 a 12 bloques</span>
+                </div>
+              </div>
+
+              <div class="bg-gradient-to-br from-brand-50 to-sky-50 rounded-xl p-4 border border-brand-100 space-y-2">
+                <div class="flex items-center justify-between text-xs font-bold text-brand-900 uppercase tracking-wider">
+                  <span>Proyección de Cuadrantes</span>
+                  <i data-lucide="calculator" class="w-4 h-4 text-brand-700"></i>
+                </div>
+                <div class="grid grid-cols-2 gap-2 text-xs text-slate-700 pt-1">
+                  <div class="bg-white/80 rounded-lg p-2.5 border border-brand-100">
+                    <span class="text-slate-500 block">Bloques por Semana:</span>
+                    <strong id="preview-weekly-blocks" class="text-base font-extrabold text-brand-800">20 bloques</strong>
+                  </div>
+                  <div class="bg-white/80 rounded-lg p-2.5 border border-brand-100">
+                    <span class="text-slate-500 block">Total Bloques Mes:</span>
+                    <strong id="preview-monthly-blocks" class="text-base font-extrabold text-emerald-700">80 bloques</strong>
+                  </div>
+                </div>
+                <p class="text-[11px] text-brand-800/80 pt-1">* Cada semana calcula su % sobre sus bloques asignados; el % mensual promedia los porcentajes semanales.</p>
+              </div>
+
+              <div class="flex flex-col sm:flex-row gap-3 pt-1">
+                <button type="button" onclick="handleSaveMonthConfig()" class="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold bg-brand-700 text-white hover:bg-brand-800 transition shadow-sm">
+                  <i data-lucide="save" class="w-4 h-4"></i><span>Guardar Configuración</span>
+                </button>
+                <button type="button" onclick="saveAndGoToSheet()" class="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition shadow-sm">
+                  <i data-lucide="table-2" class="w-4 h-4"></i><span>Proyectar Planilla</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- USUARIOS DEL SISTEMA (solo cuenta principal) -->
+      <div data-principal-only class="hidden card overflow-hidden">
+        <div class="px-5 py-4 bg-slate-50/80 border-b border-slate-200/80 flex items-center justify-between">
+          <div class="flex items-center gap-2.5">
+            <span class="w-7 h-7 rounded-lg bg-ine-green text-white text-xs font-extrabold flex items-center justify-center">3</span>
+            <h3 class="font-bold text-slate-900 text-base">Usuarios del Sistema</h3>
+          </div>
+          <span class="text-xs font-medium text-slate-500">Solo la cuenta principal</span>
+        </div>
+        <div class="p-5 grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <form onsubmit="handleSaveUser(event)" class="bg-slate-50 rounded-xl p-4 border border-slate-200/70 space-y-3">
+            <label class="block text-xs font-bold uppercase tracking-wider text-slate-500">Crear o editar usuario</label>
+            <input id="user-name" type="text" required minlength="3" maxlength="40" autocomplete="off" placeholder="Nombre de usuario (Ej: Profesora Pérez)" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            <input id="user-pass" type="password" minlength="8" maxlength="80" autocomplete="new-password" placeholder="Contraseña (mínimo 8 caracteres)" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            <select id="user-role" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+              <option value="registro">Registro — solo marca asistencia</option>
+              <option value="admin">Administrador — puede modificar todo</option>
+            </select>
+            <p class="text-[11px] text-slate-500">Al editar un usuario existente, deje la contraseña vacía para conservar la actual. Solo la cuenta principal puede administrar usuarios.</p>
+            <div class="flex gap-2">
+              <button type="submit" class="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-brand-700 text-white hover:bg-brand-800 transition shadow-sm"><i data-lucide="user-plus" class="w-4 h-4"></i><span>Guardar usuario</span></button>
+              <button type="button" onclick="resetUserForm()" class="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 transition">Limpiar</button>
+            </div>
+          </form>
+          <div class="border border-slate-200 rounded-xl overflow-hidden">
+            <div class="bg-slate-100/80 px-4 py-2.5 border-b border-slate-200 text-xs font-bold text-slate-600 uppercase tracking-wider">Usuarios registrados</div>
+            <div id="users-list" class="divide-y divide-slate-100 max-h-[300px] overflow-y-auto custom-scrollbar bg-white"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== SECCIÓN 2: VISUALIZAR DATOS ===================== -->
+    <section id="section-visualizacion" class="hidden animate-fade-in space-y-6">
+
+      <div id="readonly-banner" class="hidden rounded-2xl border border-sky-200 bg-sky-50 text-sky-900 px-4 py-3 text-xs sm:text-sm flex items-center gap-2.5">
+        <i data-lucide="eye" class="w-4 h-4 shrink-0"></i>
+        <span><strong>Modo consulta:</strong> puede revisar gráficos, tablas y reportes. Para registrar asistencia debe <button type="button" onclick="openLogin(true)" class="underline font-bold">iniciar sesión como administrador</button>.</span>
+      </div>
+
+      <!-- Filtros, acciones y KPIs -->
+      <div class="card p-4 sm:p-5 space-y-4">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 flex-1 max-w-2xl">
+            <div>
+              <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">Curso</label>
+              <select id="view-course-select" onchange="onViewCourseOrMonthChange()" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm font-bold text-slate-800 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"></select>
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">Mes de Registro</label>
+              <select id="view-month-select" onchange="onViewCourseOrMonthChange()" class="month-select w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm font-bold text-slate-800 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"></select>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2">
+            <button data-mark-only onclick="markAllPresent()" class="hidden inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition">
+              <i data-lucide="check-check" class="w-4 h-4"></i>Marcar Todo Presente
+            </button>
+            <button data-mark-only onclick="clearMonthAttendance()" class="hidden inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition">
+              <i data-lucide="eraser" class="w-4 h-4"></i>Limpiar Mes
+            </button>
+            <button onclick="exportCurrentSheetCSV()" class="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold bg-brand-700 text-white hover:bg-brand-800 transition shadow-sm">
+              <i data-lucide="download" class="w-4 h-4"></i>Exportar CSV
+            </button>
+            <button id="btn-preview-pdf" onclick="openReportPreviewModal()" class="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition shadow-sm">
+              <i data-lucide="eye" class="w-4 h-4"></i>Vista Previa Reporte
+            </button>
+            <button id="btn-export-pdf" onclick="exportAnalyticsReportPDF()" class="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold bg-rose-600 text-white hover:bg-rose-700 transition shadow-sm">
+              <i data-lucide="file-text" class="w-4 h-4"></i>Exportar Reporte PDF
+            </button>
+            <button id="btn-refresh" onclick="syncNow()" title="Volver a cargar los datos desde Google Sheets" class="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold bg-white text-slate-600 border border-slate-300 hover:bg-slate-50 transition">
+              <i data-lucide="refresh-cw" class="w-4 h-4"></i>Actualizar
+            </button>
+          </div>
+        </div>
+
+        <!-- KPIs -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 pt-3 border-t border-slate-100">
+          <div class="rounded-xl p-3.5 border border-slate-200/70 bg-gradient-to-br from-white to-slate-50 flex items-start gap-3">
+            <div class="p-2 rounded-lg bg-brand-50 text-brand-700"><i data-lucide="layout-grid" class="w-4 h-4"></i></div>
+            <div><span class="text-[11px] font-semibold text-slate-500 block">Estructura Configurada</span><strong id="kpi-structure" class="text-sm font-extrabold text-slate-900">4 Sem · 5 Días · 4 Bloq</strong></div>
+          </div>
+          <div class="rounded-xl p-3.5 border border-slate-200/70 bg-gradient-to-br from-white to-slate-50 flex items-start gap-3">
+            <div class="p-2 rounded-lg bg-sky-50 text-sky-700"><i data-lucide="users" class="w-4 h-4"></i></div>
+            <div><span class="text-[11px] font-semibold text-slate-500 block">Estudiantes Matriculados</span><strong id="kpi-students" class="text-sm font-extrabold text-brand-800">0 Estudiantes</strong></div>
+          </div>
+          <div class="rounded-xl p-3.5 border border-slate-200/70 bg-gradient-to-br from-white to-emerald-50/60 flex items-start gap-3">
+            <div class="p-2 rounded-lg bg-emerald-50 text-emerald-700"><i data-lucide="trending-up" class="w-4 h-4"></i></div>
+            <div class="flex-1">
+              <span class="text-[11px] font-semibold text-slate-500 block">Promedio Mensual Curso</span>
+              <strong id="kpi-avg-attendance" class="text-sm font-extrabold text-emerald-700">0.0%</strong>
+              <div class="h-1.5 rounded-full bg-slate-200 mt-1.5 overflow-hidden"><div id="kpi-avg-bar" class="h-full rounded-full bg-emerald-500 transition-all duration-500" style="width:0%"></div></div>
+            </div>
+          </div>
+          <div class="rounded-xl p-3.5 border border-slate-200/70 bg-gradient-to-br from-white to-amber-50/60 flex items-start gap-3">
+            <div class="p-2 rounded-lg bg-amber-50 text-amber-600"><i data-lucide="alert-triangle" class="w-4 h-4"></i></div>
+            <div><span class="text-[11px] font-semibold text-slate-500 block">Bajo 85% (Alerta)</span><strong id="kpi-risk-count" class="text-sm font-extrabold text-amber-600">0 Estudiantes</strong></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel de gráficos -->
+      <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+        <!-- Gráfico principal -->
+        <div class="xl:col-span-8 card p-5 flex flex-col space-y-4">
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100 pb-3.5">
+            <div>
+              <h3 id="chart-title" class="text-sm sm:text-base font-bold text-slate-900">Evolución de Asistencia</h3>
+              <p id="chart-subtitle" class="text-xs text-slate-500">Comportamiento por curso o estudiante individual</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <select id="analytics-subject-select" onchange="renderAnalyticsPanel()" class="rounded-xl border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-800 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 max-w-[220px]"></select>
+              <div id="mode-group" class="inline-flex bg-slate-100 p-1 rounded-xl border border-slate-200/70">
+                <button id="btn-mode-dots" type="button" onclick="setChartMode('dots')" class="seg-btn px-3 py-1.5 rounded-lg text-xs font-bold transition">Puntos</button>
+                <button id="btn-mode-area" type="button" onclick="setChartMode('area')" class="seg-btn px-3 py-1.5 rounded-lg text-xs font-bold transition">Área</button>
+                <button id="btn-mode-bars" type="button" onclick="setChartMode('bars')" class="seg-btn px-3 py-1.5 rounded-lg text-xs font-bold transition">Barras</button>
+              </div>
+              <div id="scope-group" class="inline-flex bg-slate-100 p-1 rounded-xl border border-slate-200/70">
+                <button id="btn-scope-weekly" type="button" onclick="setAnalyticsTimeframe('weekly')" class="seg-btn px-3 py-1.5 rounded-lg text-xs font-bold transition">Semanal</button>
+                <button id="btn-scope-monthly" type="button" onclick="setAnalyticsTimeframe('monthly')" class="seg-btn px-3 py-1.5 rounded-lg text-xs font-bold transition">Mensual</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="relative h-[330px] w-full">
+            <canvas id="chart-main"></canvas>
+            <div data-empty class="hidden absolute inset-0 items-center justify-center text-xs text-slate-400 bg-white">Sin datos suficientes para graficar.</div>
+          </div>
+
+          <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 pt-2 border-t border-slate-100">
+            <div class="flex flex-wrap items-center gap-3">
+              <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-green-600"></span> ≥ 85% Óptimo</span>
+              <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> 70% - 84.9% Alerta</span>
+              <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-red-600"></span> &lt; 70% Crítico</span>
+              <span class="inline-flex items-center gap-1.5"><span class="w-4 border-t-2 border-dashed border-green-600"></span> Meta 85%</span>
+            </div>
+            <span>Pase el cursor sobre cada punto para ver el detalle</span>
+          </div>
+        </div>
+
+        <!-- Dona -->
+        <div class="xl:col-span-4 card p-5 flex flex-col">
+          <div class="border-b border-slate-100 pb-3.5 mb-3">
+            <h3 id="donut-title" class="text-sm sm:text-base font-bold text-slate-900">Distribución de Estudiantes</h3>
+            <p id="donut-subtitle" class="text-xs text-slate-500">Según su asistencia mensual</p>
+          </div>
+          <div class="relative flex-1 min-h-[300px]">
+            <canvas id="chart-donut"></canvas>
+            <div data-empty class="hidden absolute inset-0 items-center justify-center text-xs text-slate-400 bg-white">Sin datos.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+        <!-- Ranking -->
+        <div class="xl:col-span-7 card p-5 flex flex-col">
+          <div class="border-b border-slate-100 pb-3.5 mb-3">
+            <h3 id="ranking-title" class="text-sm sm:text-base font-bold text-slate-900">Ranking de Asistencia por Estudiante</h3>
+            <p id="ranking-subtitle" class="text-xs text-slate-500">Porcentaje mensual del mes seleccionado</p>
+          </div>
+          <div class="max-h-[420px] overflow-y-auto custom-scrollbar pr-1">
+            <div id="ranking-inner" class="relative" style="height:260px"><canvas id="chart-ranking"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Tabla de síntesis -->
+        <div class="xl:col-span-5 card overflow-hidden flex flex-col">
+          <div class="px-5 py-3.5 bg-slate-50/80 border-b border-slate-200/80 flex items-center justify-between gap-2">
+            <div>
+              <h3 id="synthesis-title" class="text-sm sm:text-base font-bold text-slate-900">Tabla de Síntesis de Porcentajes</h3>
+              <p id="synthesis-subtitle" class="text-xs text-slate-500">Resumen consolidado según selección</p>
+            </div>
+            <span id="synthesis-badge" class="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-brand-50 text-brand-700 border border-brand-100 shrink-0">Curso Completo</span>
+          </div>
+          <div id="synthesis-table-container" class="flex-1 overflow-auto custom-scrollbar max-h-[460px]"></div>
+        </div>
+      </div>
+
+      <!-- Planilla -->
+      <div class="card overflow-hidden">
+        <div class="px-5 py-3.5 bg-slate-50/80 border-b border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h3 class="text-sm sm:text-base font-bold text-slate-900">Planilla Mensual de Registro por Bloques</h3>
+            <p class="text-xs text-slate-500">Haga clic en cada bloque para registrar asistencia o en el encabezado del día para marcar la jornada completa.</p>
+          </div>
+          <span class="text-xs font-semibold text-slate-500">Desplace horizontalmente para ver todas las semanas →</span>
+        </div>
+        <div id="attendance-table-wrapper" class="overflow-x-auto custom-scrollbar"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="bg-white border-t border-slate-200/80 py-4 mt-8">
+    <div class="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
+      <span><strong>CEIA Inapewma Coronel</strong> — Plataforma de Gestión y Proyección de Asistencia</span>
+      <span>Educación de Jóvenes y Adultos · Coronel, Chile</span>
+    </div>
+  </footer>
+
+  <script>
+    // =========================================================================
+    // CONSTANTES, ESTADO GLOBAL Y UTILIDADES
+    // =========================================================================
+    const MONTHS = ['Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    const DAY_NAMES = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+    const API_URL = ((window.APP_CONFIG && window.APP_CONFIG.API_URL) || '').trim();
+    const DEMO = !API_URL;
+    const LOGO = window.LOGO_DATA_URL || '';
+
+    const appState = {
+      courses: [],
+      students: [],
+      configs: {},       // configs[courseId][month] = { weeks, daysPerWeek, blocksPerDay }
+      attendance: {},    // attendance[courseId][month][studentId] = { "w0_d0_b0": true, ... }
+      selectedManageCourseId: null,
+      transferStudentId: null,
+      analyticsTimeframe: 'weekly',
+      chartMode: 'dots'
+    };
+
+    // admin = puede modificar todo · canMark = puede registrar asistencia · principal = administra usuarios
+    const session = { token: '', user: '', role: '', admin: false, canMark: false, principal: false };
+    function setSessionRole(role, principal) {
+      session.role = role || '';
+      session.admin = role === 'admin';
+      session.canMark = role === 'admin' || role === 'registro';
+      session.principal = !!principal;
+    }
+    const $ = id => document.getElementById(id);
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const refreshIcons = () => { if (window.lucide) lucide.createIcons(); };
+    const round1 = n => Math.round(n * 10) / 10;
+
+    function generateId(prefix = 'id') {
+      return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    }
+
+    // =========================================================================
+    // TOASTS Y MODALES
+    // =========================================================================
+    function showToast(message, type = 'success') {
+      const container = $('toast-container');
+      if (!container) return;
+      const styles = {
+        success: 'bg-slate-900 text-white border-emerald-500',
+        info: 'bg-brand-900 text-white border-sky-400',
+        warning: 'bg-amber-950 text-amber-50 border-amber-400',
+        error: 'bg-red-950 text-red-50 border-red-400'
+      };
+      const iconName = { success: 'check-circle-2', info: 'info', warning: 'alert-circle', error: 'x-circle' }[type] || 'info';
+      const toast = document.createElement('div');
+      toast.className = `pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg border-l-4 text-xs sm:text-sm font-medium animate-fade-in ${styles[type] || styles.info}`;
+      toast.innerHTML = `<i data-lucide="${iconName}" class="w-4 h-4 shrink-0"></i><span class="flex-1"></span>`;
+      toast.lastElementChild.textContent = message;
+      container.appendChild(toast);
+      refreshIcons();
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(6px)';
+        toast.style.transition = 'all 0.2s ease';
+        setTimeout(() => toast.remove(), 220);
+      }, 3600);
+    }
+
+    function openConfirmModal(title, message, onConfirm) {
+      const modal = $('confirm-modal');
+      $('confirm-title').textContent = title;
+      $('confirm-message').textContent = message;
+      const close = () => { modal.classList.add('hidden'); modal.classList.remove('flex'); };
+      $('confirm-ok-btn').onclick = () => { close(); if (typeof onConfirm === 'function') onConfirm(); };
+      $('confirm-cancel-btn').onclick = close;
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    // =========================================================================
+    // SINCRONIZACIÓN CON APPS SCRIPT (Google Sheets)
+    // =========================================================================
+    let syncChain = Promise.resolve();
+    let pendingCount = 0;
+    let failedOps = [];
+    let attDirty = {};          // { "courseId|month": Set(studentId) }
+    let attTimer = null;
+
+    async function callApi(action, payload = {}, withToken = true) {
+      const body = JSON.stringify({ action, ...(withToken && session.token ? { token: session.token } : {}), ...payload });
+      // Content-Type por defecto (text/plain) => "petición simple", sin preflight CORS con Apps Script
+      const res = await fetch(API_URL, { method: 'POST', body, redirect: 'follow' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return await res.json();
+    }
+
+    function setSync(state) {
+      const chip = $('sync-chip'), dot = $('sync-dot'), txt = $('sync-text');
+      if (!chip) return;
+      const map = {
+        demo:    ['Modo demostración', 'bg-amber-400', 'bg-amber-50 text-amber-800 border-amber-200'],
+        loading: ['Cargando…', 'bg-sky-500 animate-pulse', 'bg-sky-50 text-sky-800 border-sky-200'],
+        saving:  ['Guardando…', 'bg-amber-500 animate-pulse', 'bg-amber-50 text-amber-800 border-amber-200'],
+        saved:   ['Sincronizado', 'bg-emerald-500', 'bg-emerald-50 text-emerald-800 border-emerald-200'],
+        error:   ['Error al guardar · Reintentar', 'bg-red-500', 'bg-red-50 text-red-700 border-red-200 cursor-pointer']
+      };
+      const [label, dotCls, chipCls] = map[state] || map.saved;
+      txt.textContent = label;
+      dot.className = `w-2 h-2 rounded-full ${dotCls}`;
+      chip.className = `inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] font-bold border transition ${chipCls}`;
+    }
+
+    function refreshSyncChip() {
+      if (DEMO) return setSync('demo');
+      if (pendingCount > 0) return setSync('saving');
+      setSync(failedOps.length ? 'error' : 'saved');
+    }
+
+    function onSyncChipClick() { if (failedOps.length) retryFailed(); }
+
+    function retryFailed() {
+      const ops = failedOps;
+      failedOps = [];
+      ops.forEach(o => persist(o.action, o.payload));
+    }
+
+    function persist(action, payload) {
+      if (DEMO) { saveLocalSoon(); return; }
+      pendingCount++;
+      setSync('saving');
+      syncChain = syncChain.then(async () => {
+        try {
+          const res = await callApi(action, payload);
+          if (!res.ok) {
+            failedOps.push({ action, payload });
+            if (res.error === 'SESION_EXPIRADA') expireSession();
+            else showToast(`No se pudo guardar (${res.error || 'error'}). Pulse "Reintentar".`, 'error');
+          }
+        } catch (e) {
+          failedOps.push({ action, payload });
+          showToast('Sin conexión con el servidor. Los cambios se reintentarán.', 'error');
+        } finally {
+          pendingCount--;
+          refreshSyncChip();
+        }
+      });
+    }
+
+    function markAttDirty(courseId, month, studentIds) {
+      const key = `${courseId}|${month}`;
+      if (!attDirty[key]) attDirty[key] = new Set();
+      studentIds.forEach(id => attDirty[key].add(id));
+      if (DEMO) { saveLocalSoon(); return; }
+      setSync('saving');
+      clearTimeout(attTimer);
+      attTimer = setTimeout(flushAttendance, 700);
+    }
+
+    function flushAttendance() {
+      clearTimeout(attTimer);
+      const dirty = attDirty;
+      attDirty = {};
+      Object.keys(dirty).forEach(key => {
+        const [courseId, month] = key.split('|');
+        const records = {};
+        dirty[key].forEach(sid => {
+          records[sid] = Object.keys(getStudentAttendanceMap(courseId, month, sid));
+        });
+        persist('saveAttendance', { courseId, month, records });
+      });
+    }
+
+    window.addEventListener('beforeunload', (e) => {
+      if (!DEMO && (pendingCount > 0 || failedOps.length || Object.keys(attDirty).length)) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    });
+
+    // --- Modo demostración: almacenamiento local ---
+    let localTimer = null;
+    function saveLocalSoon() {
+      clearTimeout(localTimer);
+      localTimer = setTimeout(() => {
+        try {
+          const { courses, students, configs, attendance } = appState;
+          localStorage.setItem('ceia_demo_state', JSON.stringify({ courses, students, configs, attendance }));
+        } catch (e) { /* almacenamiento no disponible */ }
+      }, 300);
+    }
+    function loadLocal() {
+      try {
+        const raw = localStorage.getItem('ceia_demo_state');
+        if (!raw) return false;
+        const s = JSON.parse(raw);
+        if (!s || !Array.isArray(s.courses) || !s.courses.length) return false;
+        Object.assign(appState, { courses: s.courses, students: s.students || [], configs: s.configs || {}, attendance: s.attendance || {} });
+        return true;
+      } catch (e) { return false; }
+    }
+
+    // =========================================================================
+    // SESIÓN / ACCESO ADMINISTRADOR
+    // =========================================================================
+    function loadSession() {
+      try {
+        const s = JSON.parse(sessionStorage.getItem('ceia_session') || 'null');
+        if (s && s.token) { session.token = s.token; session.user = s.user || ''; setSessionRole(s.role, s.principal); }
+      } catch (e) { /* sin sessionStorage */ }
+    }
+    function saveSession() {
+      try {
+        if (session.canMark) sessionStorage.setItem('ceia_session', JSON.stringify({ token: session.token, user: session.user, role: session.role, principal: session.principal }));
+        else sessionStorage.removeItem('ceia_session');
+      } catch (e) { /* sin sessionStorage */ }
+    }
+
+    let loginOnSuccess = null;
+    function openLogin(dismissible = true, onSuccess = null) {
+      if (DEMO) return;
+      loginOnSuccess = onSuccess;
+      $('login-cancel').classList.toggle('hidden', !dismissible);
+      $('login-subtitle').textContent = dismissible
+        ? 'Ingrese sus credenciales para cargar y modificar datos.'
+        : 'Este sistema requiere iniciar sesión para consultar los datos.';
+      $('login-error').classList.add('hidden');
+      $('login-pass').value = '';
+      const modal = $('login-modal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      refreshIcons();
+      setTimeout(() => $('login-user').focus(), 50);
+    }
+    function closeLogin() {
+      const modal = $('login-modal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+      loginOnSuccess = null;
+    }
+    function toggleLoginPass() {
+      const i = $('login-pass');
+      i.type = i.type === 'password' ? 'text' : 'password';
+    }
+
+    async function submitLogin(ev) {
+      ev.preventDefault();
+      const btn = $('login-btn');
+      const errBox = $('login-error');
+      errBox.classList.add('hidden');
+      btn.disabled = true;
+      try {
+        const res = await callApi('login', { user: $('login-user').value, pass: $('login-pass').value }, false);
+        if (!res.ok) {
+          const msgs = {
+            CREDENCIALES_INVALIDAS: 'Usuario o contraseña incorrectos.',
+            BLOQUEADO: 'Demasiados intentos fallidos. Espere unos minutos e intente nuevamente.'
+          };
+          errBox.textContent = msgs[res.error] || 'No fue posible iniciar sesión.';
+          errBox.classList.remove('hidden');
+          return;
+        }
+        session.token = res.token; session.user = res.user; setSessionRole(res.rol, res.principal);
+        saveSession();
+        $('login-pass').value = '';
+        const cb = loginOnSuccess;
+        closeLogin();
+        await loadAll();          // recarga con datos de administrador (incluye RUT)
+        applyAuthUI();
+        showToast(`Sesión iniciada: ${session.user}.`);
+        if (failedOps.length) retryFailed();
+        if (typeof cb === 'function') cb();
+      } catch (e) {
+        errBox.textContent = 'No se pudo conectar con el servidor. Intente nuevamente.';
+        errBox.classList.remove('hidden');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function clearSession() {
+      session.token = ''; session.user = '';
+      setSessionRole('', false);
+      saveSession();
+    }
+
+    async function logout() {
+      const token = session.token;
+      clearSession();
+      if (token && !DEMO) { callApi('logout', { token }, false).catch(() => {}); }
+      const status = await loadAll();    // vuelve a la vista de visitante (sin RUT)
+      applyAuthUI();
+      if (status === 'ok') {
+        switchMainTab('visualizacion');
+        showToast('Sesión cerrada.', 'info');
+      }
+    }
+
+    function expireSession() {
+      clearSession();
+      applyAuthUI();
+      switchMainTab('visualizacion');
+      showToast('Su sesión expiró. Vuelva a iniciar sesión para guardar los cambios pendientes.', 'warning');
+      openLogin(true);
+    }
+
+    function applyAuthUI() {
+      const { admin, canMark, principal } = session;
+      document.querySelectorAll('[data-mark-only]').forEach(el => el.classList.toggle('hidden', !canMark));
+      document.querySelectorAll('[data-principal-only]').forEach(el => el.classList.toggle('hidden', !principal));
+      document.querySelectorAll('[data-guest-only]').forEach(el => el.classList.toggle('hidden', canMark || DEMO));
+      $('tab-lock').classList.toggle('hidden', admin);
+      $('readonly-banner').classList.toggle('hidden', canMark);
+      $('auth-user-name').textContent = `${session.user || 'Administrador'}${session.role === 'registro' ? ' (registro)' : ''}`;
+      $('btn-logout').classList.toggle('hidden', DEMO);
+      if (!admin) $('section-inspectoria').classList.add('hidden');   // solo administradores ven la gestión
+      refreshIcons();
+    }
+
+    // =========================================================================
+    // CARGA DE DATOS DESDE EL SERVIDOR
+    // =========================================================================
+    function hydrate(res) {
+      appState.courses = res.cursos.map(c => ({ id: c.id, name: c.nombre, shift: c.jornada }));
+      appState.students = res.estudiantes.map(e => ({ id: e.id, courseId: e.cursoId, name: e.nombre, rut: e.rut || '', estado: e.estado || 'Activo' }));
+      appState.configs = {};
+      res.configs.forEach(c => {
+        if (!appState.configs[c.cursoId]) appState.configs[c.cursoId] = {};
+        appState.configs[c.cursoId][c.mes] = { weeks: c.semanas, daysPerWeek: c.diasSemana, blocksPerDay: c.bloquesDia };
+      });
+      appState.attendance = {};
+      res.asistencia.forEach(([cid, mes, sid, marcas]) => {
+        const map = getStudentAttendanceMap(cid, mes, sid);
+        String(marcas || '').split(',').filter(Boolean).forEach(k => { map[k] = true; });
+      });
+      if (!appState.courses.some(c => c.id === appState.selectedManageCourseId)) {
+        appState.selectedManageCourseId = appState.courses[0]?.id || null;
+      }
+    }
+
+    /** Devuelve 'ok' | 'login' | 'error' */
+    async function loadAll() {
+      setSync('loading');
+      try {
+        const res = await callApi('getAll');
+        if (!res.ok) {
+          if (res.error === 'LOGIN_REQUIRED') {
+            clearSession();
+            setSync('saved');
+            return 'login';
+          }
+          throw new Error(res.error || 'error');
+        }
+        if (!res.admin && session.token) { clearSession(); }
+        hydrate(res);
+        refreshSyncChip();
+        renderAll();
+        return 'ok';
+      } catch (e) {
+        setSync('error');
+        showToast('No se pudieron cargar los datos del servidor.', 'error');
+        return 'error';
+      }
+    }
+
+    async function syncNow() {
+      if (DEMO) { showToast('En modo demostración no hay servidor que actualizar.', 'info'); return; }
+      flushAttendance();
+      await syncChain;
+      if (failedOps.length) { showToast('Hay cambios sin guardar. Pulse "Reintentar" antes de actualizar.', 'warning'); return; }
+      const st = await loadAll();
+      if (st === 'ok') showToast('Datos actualizados desde Google Sheets.', 'info');
+    }
+
+    function renderAll() {
+      syncCourseDropdowns();
+      if (session.admin) renderInspectoriaUI();
+      populateAnalyticsSubjects();
+      renderAttendanceSheet();
+      refreshIcons();
+    }
+
+    async function bootLoad() {
+      $('load-error').classList.add('hidden');
+      $('load-spinner').classList.remove('hidden');
+      const st = await loadAll();
+      if (st === 'error') {
+        $('load-spinner').classList.add('hidden');
+        $('load-error').classList.remove('hidden');
+        return;
+      }
+      $('load-overlay').classList.add('hidden');
+      applyAuthUI();
+      switchMainTab('visualizacion');
+      if (st === 'login') openLogin(false);
+    }
+
+    // =========================================================================
+    // NAVEGACIÓN
+    // =========================================================================
+    const NAV_ON = 'flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all bg-brand-700 text-white shadow-sm';
+    const NAV_OFF = 'flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all text-slate-600 hover:bg-white';
+
+    function switchMainTab(tab) {
+      if (tab === 'inspectoria' && !session.admin) {
+        if (DEMO) return;
+        if (session.canMark) { showToast('Su perfil permite solo registrar asistencia.', 'warning'); return; }
+        openLogin(true, () => switchMainTab('inspectoria'));
+        return;
+      }
+      const secInsp = $('section-inspectoria');
+      const secVis = $('section-visualizacion');
+      if (tab === 'inspectoria') {
+        secInsp.classList.remove('hidden');
+        secVis.classList.add('hidden');
+        $('tab-btn-inspectoria').className = NAV_ON;
+        $('tab-btn-visualizacion').className = NAV_OFF;
+        renderInspectoriaUI();
+      } else {
+        secInsp.classList.add('hidden');
+        secVis.classList.remove('hidden');
+        $('tab-btn-visualizacion').className = NAV_ON;
+        $('tab-btn-inspectoria').className = NAV_OFF;
+        syncCourseDropdowns();
+        populateAnalyticsSubjects();
+        renderAttendanceSheet();
+      }
+      refreshIcons();
+    }
+
+    // =========================================================================
+    // MODELO DE DATOS Y CÁLCULO
+    // =========================================================================
+    function getMonthConfig(courseId, month) {
+      if (!appState.configs[courseId]) appState.configs[courseId] = {};
+      if (!appState.configs[courseId][month]) appState.configs[courseId][month] = { weeks: 4, daysPerWeek: 5, blocksPerDay: 4 };
+      return appState.configs[courseId][month];
+    }
+
+    function getStudentAttendanceMap(courseId, month, studentId) {
+      if (!appState.attendance[courseId]) appState.attendance[courseId] = {};
+      if (!appState.attendance[courseId][month]) appState.attendance[courseId][month] = {};
+      if (!appState.attendance[courseId][month][studentId]) appState.attendance[courseId][month][studentId] = {};
+      return appState.attendance[courseId][month][studentId];
+    }
+
+    function calculateStudentPercentages(courseId, month, studentId, cfg) {
+      const config = cfg || getMonthConfig(courseId, month);
+      const attMap = getStudentAttendanceMap(courseId, month, studentId);
+      const blocksPerWeek = config.daysPerWeek * config.blocksPerDay;
+      const weeklyPercentages = [];
+      for (let w = 0; w < config.weeks; w++) {
+        let attended = 0;
+        for (let d = 0; d < config.daysPerWeek; d++) {
+          for (let b = 0; b < config.blocksPerDay; b++) {
+            if (attMap[`w${w}_d${d}_b${b}`]) attended++;
+          }
+        }
+        weeklyPercentages.push(blocksPerWeek > 0 ? (attended / blocksPerWeek) * 100 : 0);
+      }
+      const monthlyPercentage = weeklyPercentages.length > 0
+        ? weeklyPercentages.reduce((acc, v) => acc + v, 0) / weeklyPercentages.length : 0;
+      return { weeklyPercentages, monthlyPercentage };
+    }
+
+    /** Datos de ejemplo (solo para el modo demostración; en producción los entrega Apps Script) */
+    function initDemoData() {
+      const c1 = { id: 'course_1', name: '1° Nivel Medio A', shift: 'Vespertina' };
+      const c2 = { id: 'course_2', name: '2° Nivel Medio B', shift: 'Tarde' };
+      const c3 = { id: 'course_3', name: '3° Nivel Básico Adultos', shift: 'Mañana' };
+      appState.courses = [c1, c2, c3];
+      appState.selectedManageCourseId = c1.id;
+      appState.students = [
+        { id: 'stu_1', courseId: c1.id, name: 'Alarcón Muñoz, Camila Fernanda', rut: '19.482.310-4' },
+        { id: 'stu_2', courseId: c1.id, name: 'Bustos Sepúlveda, Matías Ignacio', rut: '18.920.115-K' },
+        { id: 'stu_3', courseId: c1.id, name: 'Carrasco Sáez, Javiera Antonia', rut: '20.145.882-1' },
+        { id: 'stu_4', courseId: c1.id, name: 'Díaz Valenzuela, Cristóbal Andrés', rut: '17.634.902-7' },
+        { id: 'stu_5', courseId: c1.id, name: 'Espinoza Riquelme, Valentina Paz', rut: '19.874.221-9' },
+        { id: 'stu_6', courseId: c1.id, name: 'Fuentes Contreras, Sebastián Alonso', rut: '18.312.509-2' },
+        { id: 'stu_7', courseId: c2.id, name: 'Garrido Pacheco, Francisca Belén', rut: '19.104.778-5' },
+        { id: 'stu_8', courseId: c2.id, name: 'Henríquez Silva, Diego Alejandro', rut: '18.559.430-0' },
+        { id: 'stu_9', courseId: c2.id, name: 'Jara Morales, Constanza Isabel', rut: '20.011.643-8' },
+        { id: 'stu_10', courseId: c3.id, name: 'Lagos Pérez, Patricio Hernán', rut: '15.892.340-6' },
+        { id: 'stu_11', courseId: c3.id, name: 'Mendoza Soto, Rosa Elena', rut: '14.720.198-3' }
+      ];
+      appState.courses.forEach(course => {
+        MONTHS.forEach((month, mIdx) => {
+          const cfg = getMonthConfig(course.id, month);
+          appState.students.filter(s => s.courseId === course.id).forEach((stu, sIdx) => {
+            const attMap = getStudentAttendanceMap(course.id, month, stu.id);
+            const baseRate = sIdx === 3 ? 0.64 : sIdx === 1 ? 0.78 : 0.91;
+            for (let w = 0; w < cfg.weeks; w++) for (let d = 0; d < cfg.daysPerWeek; d++) for (let b = 0; b < cfg.blocksPerDay; b++) {
+              const pseudo = ((sIdx * 17 + mIdx * 13 + w * 7 + d * 5 + b * 3) % 100) / 100;
+              if (pseudo < baseRate) attMap[`w${w}_d${d}_b${b}`] = true;
+            }
+          });
+        });
+      });
+    }
+
+    // =========================================================================
+    // SECCIÓN 1: INSPECTORÍA
+    // =========================================================================
+    function fillMonthSelects() {
+      document.querySelectorAll('.month-select').forEach(sel => {
+        if (sel.options.length) return;
+        MONTHS.forEach(m => sel.appendChild(new Option(m, m)));
+      });
+    }
+
+    function syncCourseDropdowns() {
+      const manageSel = $('manage-course-select');
+      const configSel = $('config-course-select');
+      const viewSel = $('view-course-select');
+      const prevView = viewSel?.value;
+      const prevConfig = configSel?.value;
+
+      [manageSel, configSel, viewSel].forEach(sel => {
+        if (!sel) return;
+        sel.innerHTML = '';
+        appState.courses.forEach(c => sel.appendChild(new Option(`${c.name} (${c.shift})`, c.id)));
+      });
+
+      if (appState.courses.length > 0) {
+        if (!appState.selectedManageCourseId || !appState.courses.some(c => c.id === appState.selectedManageCourseId)) {
+          appState.selectedManageCourseId = appState.courses[0].id;
+        }
+        manageSel.value = appState.selectedManageCourseId;
+        configSel.value = prevConfig && appState.courses.some(c => c.id === prevConfig) ? prevConfig : appState.selectedManageCourseId;
+        viewSel.value = prevView && appState.courses.some(c => c.id === prevView) ? prevView : appState.selectedManageCourseId;
+      }
+    }
+
+    function renderInspectoriaUI() {
+      syncCourseDropdowns();
+      const n = appState.courses.length;
+      $('total-courses-badge').textContent = `${n} Curso${n === 1 ? '' : 's'} activo${n === 1 ? '' : 's'}`;
+      renderCourseStudentsList();
+      loadMonthConfigIntoForm();
+      if (session.principal) loadUsers();
+      refreshIcons();
+    }
+
+    function requireAdmin() {
+      if (session.admin) return true;
+      if (session.canMark) { showToast('Su perfil permite solo registrar asistencia.', 'warning'); return false; }
+      showToast('Esta acción requiere acceso de administrador.', 'warning');
+      openLogin(true);
+      return false;
+    }
+    function requireMark() {
+      if (session.canMark) return true;
+      showToast('Inicie sesión para registrar asistencia.', 'warning');
+      openLogin(true);
+      return false;
+    }
+
+    function handleCreateCourse(event) {
+      event.preventDefault();
+      if (!requireAdmin()) return;
+      const nameInput = $('new-course-name');
+      const name = nameInput.value.trim();
+      if (!name) return;
+      const newCourse = { id: generateId('course'), name, shift: $('new-course-shift').value };
+      appState.courses.push(newCourse);
+      appState.selectedManageCourseId = newCourse.id;
+      nameInput.value = '';
+      persist('saveCourse', { course: { id: newCourse.id, nombre: newCourse.name, jornada: newCourse.shift } });
+      renderInspectoriaUI();
+      showToast(`Curso "${newCourse.name}" conformado correctamente.`);
+    }
+
+    function handleSelectManageCourse(courseId) {
+      appState.selectedManageCourseId = courseId;
+      renderCourseStudentsList();
+      refreshIcons();
+    }
+
+    function handleDeleteCurrentCourse() {
+      if (!requireAdmin()) return;
+      const courseId = appState.selectedManageCourseId;
+      const course = appState.courses.find(c => c.id === courseId);
+      if (!course) return;
+      if (appState.courses.length <= 1) {
+        showToast('Debe existir al menos un curso activo en el establecimiento.', 'warning');
+        return;
+      }
+      openConfirmModal('Eliminar Curso',
+        `¿Está seguro de eliminar "${course.name}" y toda su nómina asociada? Esta acción no se puede deshacer.`,
+        () => {
+          appState.courses = appState.courses.filter(c => c.id !== courseId);
+          appState.students = appState.students.filter(s => s.courseId !== courseId);
+          delete appState.configs[courseId];
+          delete appState.attendance[courseId];
+          appState.selectedManageCourseId = appState.courses[0]?.id || null;
+          persist('deleteCourse', { id: courseId });
+          renderInspectoriaUI();
+          showToast(`Curso "${course.name}" eliminado.`, 'warning');
+        });
+    }
+
+    function handleAddStudent(event) {
+      event.preventDefault();
+      if (!requireAdmin()) return;
+      const courseId = appState.selectedManageCourseId;
+      if (!courseId) { showToast('Seleccione o cree un curso antes de incorporar estudiantes.', 'warning'); return; }
+      const nameInput = $('new-student-name');
+      const rutInput = $('new-student-rut');
+      const name = nameInput.value.trim();
+      const rut = rutInput.value.trim() || 'Sin RUT';
+      if (!name) return;
+      const stu = { id: generateId('stu'), courseId, name, rut, estado: 'Activo' };
+      appState.students.push(stu);
+      persist('saveStudent', { student: studentPayload(stu) });
+      nameInput.value = '';
+      rutInput.value = '';
+      renderCourseStudentsList();
+      refreshIcons();
+      showToast(`Estudiante "${name}" incorporado al curso.`);
+    }
+
+    function renderCourseStudentsList() {
+      const courseId = appState.selectedManageCourseId;
+      const listEl = $('manage-students-list');
+      const countEl = $('course-student-count');
+      if (!listEl || !countEl) return;
+      const all = appState.students.filter(s => s.courseId === courseId).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+      const students = all.filter(s => s.estado !== 'Retirado');
+      const retired = all.filter(s => s.estado === 'Retirado');
+      countEl.textContent = `${students.length} Estudiante${students.length === 1 ? '' : 's'}`;
+      $('retired-count').textContent = retired.length;
+
+      const btn = (cls, fn, id, icon, label, title) => `<button type="button" onclick="${fn}('${esc(id)}')" title="${title}" class="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition ${cls}"><i data-lucide="${icon}" class="w-3.5 h-3.5"></i><span class="hidden md:inline">${label}</span></button>`;
+      const blue = 'text-brand-700 bg-brand-50 hover:bg-brand-100 border-brand-100';
+      const amber = 'text-amber-700 bg-amber-50 hover:bg-amber-100 border-amber-200';
+      const red = 'text-red-600 bg-red-50 hover:bg-red-100 border-red-200/70';
+      const green = 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border-emerald-200';
+      const row = (stu, idx, buttons) => `
+        <div class="px-4 py-2.5 flex items-center justify-between gap-3 hover:bg-slate-50 transition">
+          <div class="min-w-0">
+            <div class="text-xs sm:text-sm font-semibold text-slate-800 truncate"><span class="text-slate-400 font-bold mr-1.5">${idx + 1}.</span>${esc(stu.name)}</div>
+            <div class="text-[11px] text-slate-500">RUT: ${esc(stu.rut || '—')}</div>
+          </div>
+          <div class="flex items-center gap-1.5 shrink-0">${buttons}</div>
+        </div>`;
+
+      listEl.innerHTML = students.length === 0
+        ? `<div class="p-8 text-center text-xs text-slate-400">No hay estudiantes matriculados en este curso. Utilice el formulario superior para incorporar alumnos.</div>`
+        : students.map((stu, idx) => row(stu, idx,
+            btn(blue, 'openTransferModal', stu.id, 'arrow-left-right', 'Cambiar Curso', 'Cambiar de curso') +
+            btn(amber, 'handleRetireStudent', stu.id, 'user-minus', 'Retirar', 'Retirar (conserva su historial)') +
+            btn(red, 'handleDeleteStudentForever', stu.id, 'trash-2', 'Eliminar', 'Eliminar definitivamente de la base de datos'))).join('');
+
+      $('retired-students-list').innerHTML = retired.length === 0
+        ? `<div class="p-6 text-center text-xs text-slate-400">No hay estudiantes retirados en este curso.</div>`
+        : retired.map((stu, idx) => row(stu, idx,
+            btn(green, 'handleRestoreStudent', stu.id, 'undo-2', 'Reactivar', 'Volver a la nómina') +
+            btn(red, 'handleDeleteStudentForever', stu.id, 'trash-2', 'Eliminar', 'Eliminar definitivamente de la base de datos'))).join('');
+    }
+
+    function toggleRetiredList() { $('retired-students-list').classList.toggle('hidden'); }
+
+    function studentPayload(stu) {
+      return { id: stu.id, cursoId: stu.courseId, nombre: stu.name, rut: stu.rut, estado: stu.estado === 'Retirado' ? 'Retirado' : 'Activo' };
+    }
+
+    function handleRetireStudent(studentId) {
+      if (!requireAdmin()) return;
+      const stu = appState.students.find(s => s.id === studentId);
+      if (!stu) return;
+      openConfirmModal('Retirar Estudiante', `"${stu.name}" dejará de aparecer en planillas y gráficos, pero su historial se conserva y podrá reactivarlo cuando quiera.`, () => {
+        stu.estado = 'Retirado';
+        persist('saveStudent', { student: studentPayload(stu) });
+        renderCourseStudentsList(); refreshIcons();
+        showToast(`Estudiante "${stu.name}" retirado (historial conservado).`, 'warning');
+      });
+    }
+
+    function handleRestoreStudent(studentId) {
+      if (!requireAdmin()) return;
+      const stu = appState.students.find(s => s.id === studentId);
+      if (!stu) return;
+      stu.estado = 'Activo';
+      persist('saveStudent', { student: studentPayload(stu) });
+      renderCourseStudentsList(); refreshIcons();
+      showToast(`Estudiante "${stu.name}" reactivado.`);
+    }
+
+    function handleDeleteStudentForever(studentId) {
+      if (!requireAdmin()) return;
+      const stu = appState.students.find(s => s.id === studentId);
+      if (!stu) return;
+      openConfirmModal('Eliminar de la base de datos',
+        `Se borrará definitivamente a "${stu.name}" y TODO su registro de asistencia de Google Sheets. Esta acción NO se puede deshacer. Si solo quiere que deje de aparecer, use "Retirar".`,
+        () => {
+          appState.students = appState.students.filter(s => s.id !== studentId);
+          Object.values(appState.attendance).forEach(byMonth => Object.values(byMonth).forEach(byStu => { delete byStu[studentId]; }));
+          persist('deleteStudent', { id: studentId });
+          renderCourseStudentsList(); refreshIcons();
+          showToast(`Estudiante "${stu.name}" eliminado de la base de datos.`, 'warning');
+        });
+    }
+
+    // ---------- Usuarios del sistema (cuenta principal) ----------
+    const ROLE_LABEL = { admin: 'Administrador', registro: 'Registro (solo asistencia)' };
+    let usersCache = [];
+
+    async function loadUsers() {
+      const box = $('users-list');
+      if (!box) return;
+      if (DEMO) { box.innerHTML = `<div class="p-6 text-center text-xs text-slate-400">La gestión de usuarios está disponible al conectar con Apps Script.</div>`; return; }
+      try {
+        const res = await callApi('listUsers');
+        if (res.ok) { usersCache = res.usuarios; renderUsers(); }
+        else if (res.error === 'SESION_EXPIRADA') expireSession();
+      } catch (e) { box.innerHTML = `<div class="p-6 text-center text-xs text-red-500">No se pudo cargar la lista de usuarios.</div>`; }
+    }
+
+    function renderUsers() {
+      const box = $('users-list');
+      const principalRow = `<div class="px-4 py-2.5 flex items-center justify-between gap-3 bg-slate-50/70"><div><div class="text-sm font-semibold text-slate-800">${esc(session.principal ? session.user : 'Cuenta principal')}</div><div class="text-[11px] text-slate-500">Cuenta principal · acceso total y gestión de usuarios</div></div><span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-100 text-emerald-800">Principal</span></div>`;
+      box.innerHTML = principalRow + (usersCache.length === 0
+        ? `<div class="p-5 text-center text-xs text-slate-400">Aún no hay otros usuarios. Cree el primero con el formulario.</div>`
+        : usersCache.map((u, i) => `
+          <div class="px-4 py-2.5 flex items-center justify-between gap-3 hover:bg-slate-50">
+            <div class="min-w-0"><div class="text-sm font-semibold text-slate-800 truncate">${esc(u.usuario)}</div><div class="text-[11px] text-slate-500">${esc(ROLE_LABEL[u.rol] || u.rol)}</div></div>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button type="button" onclick="editUser(${i})" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-brand-700 bg-brand-50 hover:bg-brand-100 border border-brand-100">Editar</button>
+              <button type="button" onclick="handleDeleteUser(${i})" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200/70">Eliminar</button>
+            </div>
+          </div>`).join(''));
+    }
+
+    function resetUserForm() {
+      $('user-name').value = ''; $('user-pass').value = ''; $('user-role').value = 'registro';
+      $('user-name').readOnly = false;
+    }
+
+    function editUser(i) {
+      const u = usersCache[i]; if (!u) return;
+      $('user-name').value = u.usuario; $('user-name').readOnly = true;
+      $('user-role').value = u.rol; $('user-pass').value = '';
+      $('user-pass').focus();
+    }
+
+    async function handleSaveUser(ev) {
+      ev.preventDefault();
+      if (!session.principal || DEMO) { showToast('Solo la cuenta principal puede administrar usuarios.', 'warning'); return; }
+      const usuario = $('user-name').value.trim(), clave = $('user-pass').value, rol = $('user-role').value;
+      try {
+        const res = await callApi('saveUser', { userData: { usuario, clave, rol } });
+        if (!res.ok) {
+          const msgs = { CLAVE_CORTA: 'La contraseña debe tener al menos 8 caracteres.', USUARIO_INVALIDO: 'Nombre de usuario inválido (mínimo 3 caracteres).', USUARIO_RESERVADO: 'Ese nombre está reservado para la cuenta principal.', SESION_EXPIRADA: 'Su sesión expiró.' };
+          if (res.error === 'SESION_EXPIRADA') return expireSession();
+          showToast(msgs[res.error] || `No se pudo guardar el usuario (${res.error}).`, 'error');
+          return;
+        }
+        showToast(res.creado ? `Usuario "${usuario}" creado.` : `Usuario "${usuario}" actualizado.`);
+        resetUserForm();
+        await loadUsers();
+      } catch (e) { showToast('Sin conexión con el servidor.', 'error'); }
+    }
+
+    function handleDeleteUser(i) {
+      const u = usersCache[i]; if (!u) return;
+      openConfirmModal('Eliminar Usuario', `¿Eliminar el acceso de "${u.usuario}"? Sus sesiones abiertas dejarán de funcionar.`, async () => {
+        try {
+          const res = await callApi('deleteUser', { usuario: u.usuario });
+          if (res.ok) { showToast(`Usuario "${u.usuario}" eliminado.`, 'warning'); await loadUsers(); }
+          else showToast(`No se pudo eliminar (${res.error}).`, 'error');
+        } catch (e) { showToast('Sin conexión con el servidor.', 'error'); }
+      });
+    }
+
+    function openTransferModal(studentId) {
+      if (!requireAdmin()) return;
+      const stu = appState.students.find(s => s.id === studentId);
+      if (!stu) return;
+      const otherCourses = appState.courses.filter(c => c.id !== stu.courseId);
+      if (otherCourses.length === 0) { showToast('Cree otro curso primero para poder trasladar estudiantes.', 'warning'); return; }
+      appState.transferStudentId = studentId;
+      $('transfer-student-name').textContent = stu.name;
+      const targetSel = $('transfer-target-course');
+      targetSel.innerHTML = '';
+      otherCourses.forEach(c => targetSel.appendChild(new Option(`${c.name} (${c.shift})`, c.id)));
+      const modal = $('transfer-modal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+    }
+
+    function closeTransferModal() {
+      const modal = $('transfer-modal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+      appState.transferStudentId = null;
+    }
+
+    function confirmStudentTransfer() {
+      const stu = appState.students.find(s => s.id === appState.transferStudentId);
+      const targetCourse = appState.courses.find(c => c.id === $('transfer-target-course').value);
+      if (stu && targetCourse) {
+        stu.courseId = targetCourse.id;
+        persist('saveStudent', { student: studentPayload(stu) });
+        renderCourseStudentsList();
+        refreshIcons();
+        showToast(`${stu.name} trasladado a "${targetCourse.name}".`);
+      }
+      closeTransferModal();
+    }
+
+    function loadMonthConfigIntoForm() {
+      const courseId = $('config-course-select')?.value;
+      const month = $('config-month-select')?.value;
+      if (!courseId || !month) return;
+      const cfg = getMonthConfig(courseId, month);
+      $('cfg-weeks').value = cfg.weeks;
+      $('cfg-days').value = cfg.daysPerWeek;
+      $('cfg-blocks').value = cfg.blocksPerDay;
+      updateConfigPreviewCard();
+    }
+
+    function readConfigForm() {
+      return {
+        weeks: Math.min(6, Math.max(1, parseInt($('cfg-weeks').value, 10) || 4)),
+        daysPerWeek: Math.min(7, Math.max(1, parseInt($('cfg-days').value, 10) || 5)),
+        blocksPerDay: Math.min(12, Math.max(1, parseInt($('cfg-blocks').value, 10) || 4))
+      };
+    }
+
+    function updateConfigPreviewCard() {
+      const { weeks, daysPerWeek, blocksPerDay } = readConfigForm();
+      const weekly = daysPerWeek * blocksPerDay;
+      const monthly = weeks * weekly;
+      $('preview-weekly-blocks').textContent = `${weekly} bloque${weekly === 1 ? '' : 's'}`;
+      $('preview-monthly-blocks').textContent = `${monthly} bloque${monthly === 1 ? '' : 's'}`;
+    }
+
+    function handleSaveMonthConfig() {
+      if (!requireAdmin()) return false;
+      const courseId = $('config-course-select').value;
+      const month = $('config-month-select').value;
+      if (!courseId || !month) return false;
+      const cfg = readConfigForm();
+      if (!appState.configs[courseId]) appState.configs[courseId] = {};
+      appState.configs[courseId][month] = cfg;
+      persist('saveConfig', { courseId, month, weeks: cfg.weeks, daysPerWeek: cfg.daysPerWeek, blocksPerDay: cfg.blocksPerDay });
+      const course = appState.courses.find(c => c.id === courseId);
+      showToast(`Estructura guardada para ${course?.name || 'el curso'} en ${month} (${cfg.weeks} sem · ${cfg.daysPerWeek} días · ${cfg.blocksPerDay} bloq).`);
+      return true;
+    }
+
+    function saveAndGoToSheet() {
+      if (!handleSaveMonthConfig()) return;
+      const courseId = $('config-course-select').value;
+      const month = $('config-month-select').value;
+      switchMainTab('visualizacion');
+      $('view-course-select').value = courseId;
+      $('view-month-select').value = month;
+      onViewCourseOrMonthChange();
+    }
+
+    // =========================================================================
+    // SECCIÓN 2: PLANILLA DE ASISTENCIA
+    // =========================================================================
+    const statusColor = v => v >= 85 ? '#16a34a' : v >= 70 ? '#f59e0b' : '#dc2626';
+    const statusText = v => v >= 85 ? 'Óptimo' : v >= 70 ? 'Alerta' : 'Crítico';
+
+    function getBadgeColorClass(pct) {
+      if (pct >= 85) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      if (pct >= 70) return 'bg-amber-50 text-amber-700 border-amber-200';
+      return 'bg-red-50 text-red-700 border-red-200';
+    }
+
+    const CELL_ON = 'w-6 h-6 rounded-md text-xs font-bold flex items-center justify-center mx-auto transition-all bg-emerald-500 text-white shadow-xs';
+    const CELL_OFF = 'w-6 h-6 rounded-md text-xs font-bold flex items-center justify-center mx-auto transition-all bg-white border border-slate-300 text-slate-300';
+
+    function setKpiAvg(avg) {
+      $('kpi-avg-attendance').textContent = `${avg.toFixed(1)}%`;
+      const bar = $('kpi-avg-bar');
+      bar.style.width = `${Math.min(100, Math.max(0, avg))}%`;
+      bar.style.backgroundColor = statusColor(avg);
+    }
+
+    function sortedStudents(courseId) {
+      return appState.students.filter(s => s.courseId === courseId && s.estado !== 'Retirado').sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    }
+
+    function renderAttendanceSheet() {
+      const courseId = $('view-course-select').value;
+      const month = $('view-month-select').value;
+      const wrapper = $('attendance-table-wrapper');
+      if (!courseId || !month) {
+        wrapper.innerHTML = `<div class="p-12 text-center text-sm text-slate-500">No hay cursos registrados todavía.</div>`;
+        renderAnalyticsPanel();
+        return;
+      }
+      const admin = session.canMark;
+      const cfg = getMonthConfig(courseId, month);
+      const students = sortedStudents(courseId);
+
+      $('kpi-structure').textContent = `${cfg.weeks} Sem · ${cfg.daysPerWeek} Días · ${cfg.blocksPerDay} Bloq`;
+      $('kpi-students').textContent = `${students.length} Estudiante${students.length === 1 ? '' : 's'}`;
+
+      if (students.length === 0) {
+        setKpiAvg(0);
+        $('kpi-risk-count').textContent = '0 Estudiantes';
+        wrapper.innerHTML = `
+          <div class="p-12 text-center space-y-2">
+            <p class="text-base font-bold text-slate-700">Este curso aún no tiene estudiantes matriculados</p>
+            <p class="text-xs text-slate-500">${admin ? 'Vaya a la pestaña "Cargar Datos" para incorporar estudiantes al curso.' : 'Un administrador debe incorporar estudiantes al curso.'}</p>
+          </div>`;
+        renderAnalyticsPanel();
+        return;
+      }
+
+      let weekHeaderCells = '', dayHeaderCells = '', blockHeaderCells = '';
+      for (let w = 0; w < cfg.weeks; w++) {
+        const weekColSpan = cfg.daysPerWeek * cfg.blocksPerDay + 1;
+        const weekBg = w % 2 === 0 ? 'bg-brand-800' : 'bg-brand-900';
+        weekHeaderCells += `<th colspan="${weekColSpan}" class="${weekBg} text-white px-2 py-2 text-center text-xs font-extrabold uppercase tracking-wider border-l-2 border-slate-300">Semana ${w + 1}</th>`;
+        for (let d = 0; d < cfg.daysPerWeek; d++) {
+          const dayLabel = DAY_NAMES[d] || `D${d + 1}`;
+          dayHeaderCells += `<th colspan="${cfg.blocksPerDay}" ${admin ? `onclick="toggleDayColumn(${w}, ${d})" title="Clic para marcar/desmarcar todo el día"` : ''} class="${admin ? 'cursor-pointer hover:bg-sky-100' : ''} bg-slate-100 text-slate-700 px-1 py-1.5 text-center text-[11px] font-bold border-l border-slate-300 transition select-none">${dayLabel} (D${d + 1})</th>`;
+          for (let b = 0; b < cfg.blocksPerDay; b++) {
+            blockHeaderCells += `<th class="bg-slate-50 text-slate-500 px-1 py-1 text-center text-[10px] font-semibold border-l border-slate-200 min-w-[30px]">B${b + 1}</th>`;
+          }
+        }
+        dayHeaderCells += `<th rowspan="2" class="bg-brand-50 text-brand-800 px-2 py-1 text-center text-[11px] font-extrabold border-l border-brand-100 min-w-[66px]">% Sem ${w + 1}</th>`;
+      }
+
+      let totalCourseMonthly = 0, riskStudentsCount = 0;
+      const bodyRows = students.map((stu, idx) => {
+        const attMap = getStudentAttendanceMap(courseId, month, stu.id);
+        const { weeklyPercentages, monthlyPercentage } = calculateStudentPercentages(courseId, month, stu.id, cfg);
+        totalCourseMonthly += monthlyPercentage;
+        if (monthlyPercentage < 85) riskStudentsCount++;
+
+        let cellsHtml = '';
+        for (let w = 0; w < cfg.weeks; w++) {
+          for (let d = 0; d < cfg.daysPerWeek; d++) {
+            for (let b = 0; b < cfg.blocksPerDay; b++) {
+              const isPresent = !!attMap[`w${w}_d${d}_b${b}`];
+              const dayBorder = b === 0 ? 'border-l border-slate-300' : 'border-l border-slate-100';
+              const cls = isPresent ? `${CELL_ON} ${admin ? 'hover:bg-emerald-600' : ''}` : `${CELL_OFF} ${admin ? 'hover:border-sky-400 hover:text-sky-500' : ''}`;
+              cellsHtml += `<td class="p-1 text-center ${dayBorder}"><button type="button" ${admin ? `onclick="toggleBlockAttendance('${esc(stu.id)}', ${w}, ${d}, ${b}, this)"` : 'disabled tabindex="-1"'} class="${cls} ${admin ? '' : 'cursor-default'}">${isPresent ? '✓' : '·'}</button></td>`;
+            }
+          }
+          cellsHtml += `<td id="week-pct-${esc(stu.id)}-${w}" class="px-2 py-1.5 text-center text-xs font-extrabold bg-brand-50/50 text-brand-800 border-l border-brand-100">${weeklyPercentages[w].toFixed(1)}%</td>`;
+        }
+        cellsHtml += `<td class="px-2.5 py-1.5 text-center border-l-2 border-slate-300 bg-slate-50/70"><span id="month-pct-${esc(stu.id)}" class="inline-block px-2.5 py-1 rounded-lg text-xs font-extrabold border ${getBadgeColorClass(monthlyPercentage)}">${monthlyPercentage.toFixed(1)}%</span></td>`;
+
+        return `
+          <tr class="border-b border-slate-200/80 hover:bg-sky-50/30 transition">
+            <td class="sticky-col bg-white px-4 py-2 text-xs sm:text-sm font-semibold text-slate-800 border-r-2 border-slate-200 whitespace-nowrap">
+              <div class="flex items-center gap-2"><span class="text-[11px] font-bold text-slate-400 w-5">${idx + 1}.</span><span class="truncate max-w-[200px]" title="${esc(stu.name)}">${esc(stu.name)}</span></div>
+            </td>
+            ${cellsHtml}
+          </tr>`;
+      }).join('');
+
+      setKpiAvg(totalCourseMonthly / students.length);
+      $('kpi-risk-count').textContent = `${riskStudentsCount} Estudiante${riskStudentsCount === 1 ? '' : 's'}`;
+
+      wrapper.innerHTML = `
+        <table class="w-full border-collapse text-left">
+          <thead>
+            <tr>
+              <th rowspan="3" class="sticky-header-col bg-ine-ink text-white px-4 py-3 text-xs font-extrabold uppercase tracking-wider border-r-2 border-slate-700 min-w-[230px]">Estudiantes (${month})</th>
+              ${weekHeaderCells}
+              <th rowspan="3" class="px-3 py-3 text-center text-xs font-extrabold uppercase tracking-wider bg-emerald-800 text-white border-l-2 border-slate-300 min-w-[92px]">% Mensual<br><span class="text-[10px] font-normal text-emerald-200">Consolidado</span></th>
+            </tr>
+            <tr>${dayHeaderCells}</tr>
+            <tr>${blockHeaderCells}</tr>
+          </thead>
+          <tbody>${bodyRows}</tbody>
+        </table>`;
+
+      renderAnalyticsPanel();
+    }
+
+    function toggleBlockAttendance(studentId, weekIdx, dayIdx, blockIdx, btnEl) {
+      if (!session.canMark) return;
+      const courseId = $('view-course-select').value;
+      const month = $('view-month-select').value;
+      const cfg = getMonthConfig(courseId, month);
+      const attMap = getStudentAttendanceMap(courseId, month, studentId);
+      const key = `w${weekIdx}_d${dayIdx}_b${blockIdx}`;
+
+      if (!attMap[key]) {
+        attMap[key] = true;
+        btnEl.className = `${CELL_ON} hover:bg-emerald-600`;
+        btnEl.textContent = '✓';
+      } else {
+        delete attMap[key];
+        btnEl.className = `${CELL_OFF} hover:border-sky-400 hover:text-sky-500`;
+        btnEl.textContent = '·';
+      }
+
+      const { weeklyPercentages, monthlyPercentage } = calculateStudentPercentages(courseId, month, studentId, cfg);
+      const weekCell = $(`week-pct-${studentId}-${weekIdx}`);
+      if (weekCell) weekCell.textContent = `${weeklyPercentages[weekIdx].toFixed(1)}%`;
+      const monthBadge = $(`month-pct-${studentId}`);
+      if (monthBadge) {
+        monthBadge.textContent = `${monthlyPercentage.toFixed(1)}%`;
+        monthBadge.className = `inline-block px-2.5 py-1 rounded-lg text-xs font-extrabold border ${getBadgeColorClass(monthlyPercentage)}`;
+      }
+
+      updateCourseKPIs(courseId, month, cfg);
+      renderAnalyticsPanel();
+      markAttDirty(courseId, month, [studentId]);
+    }
+
+    function updateCourseKPIs(courseId, month, cfg) {
+      const students = sortedStudents(courseId);
+      if (students.length === 0) return;
+      let total = 0, risk = 0;
+      students.forEach(stu => {
+        const { monthlyPercentage } = calculateStudentPercentages(courseId, month, stu.id, cfg);
+        total += monthlyPercentage;
+        if (monthlyPercentage < 85) risk++;
+      });
+      setKpiAvg(total / students.length);
+      $('kpi-risk-count').textContent = `${risk} Estudiante${risk === 1 ? '' : 's'}`;
+    }
+
+    function toggleDayColumn(weekIdx, dayIdx) {
+      if (!requireMark()) return;
+      const courseId = $('view-course-select').value;
+      const month = $('view-month-select').value;
+      const cfg = getMonthConfig(courseId, month);
+      const students = sortedStudents(courseId);
+      if (students.length === 0) return;
+
+      let allMarked = true;
+      outer: for (const stu of students) {
+        const attMap = getStudentAttendanceMap(courseId, month, stu.id);
+        for (let b = 0; b < cfg.blocksPerDay; b++) {
+          if (!attMap[`w${weekIdx}_d${dayIdx}_b${b}`]) { allMarked = false; break outer; }
+        }
+      }
+      const target = !allMarked;
+      students.forEach(stu => {
+        const attMap = getStudentAttendanceMap(courseId, month, stu.id);
+        for (let b = 0; b < cfg.blocksPerDay; b++) {
+          const key = `w${weekIdx}_d${dayIdx}_b${b}`;
+          if (target) attMap[key] = true; else delete attMap[key];
+        }
+      });
+      markAttDirty(courseId, month, students.map(s => s.id));
+      renderAttendanceSheet();
+      showToast(target ? `Asistencia completa marcada para Semana ${weekIdx + 1}, Día ${dayIdx + 1}.` : `Bloques desmarcados para Semana ${weekIdx + 1}, Día ${dayIdx + 1}.`, 'info');
+    }
+
+    function markAllPresent() {
+      if (!requireMark()) return;
+      const courseId = $('view-course-select').value;
+      const month = $('view-month-select').value;
+      const cfg = getMonthConfig(courseId, month);
+      const students = sortedStudents(courseId);
+      if (students.length === 0) return;
+      students.forEach(stu => {
+        const attMap = getStudentAttendanceMap(courseId, month, stu.id);
+        for (let w = 0; w < cfg.weeks; w++) for (let d = 0; d < cfg.daysPerWeek; d++) for (let b = 0; b < cfg.blocksPerDay; b++) attMap[`w${w}_d${d}_b${b}`] = true;
+      });
+      markAttDirty(courseId, month, students.map(s => s.id));
+      renderAttendanceSheet();
+      showToast(`100% de asistencia aplicada a todos los estudiantes en ${month}.`);
+    }
+
+    function clearMonthAttendance() {
+      if (!requireMark()) return;
+      const courseId = $('view-course-select').value;
+      const month = $('view-month-select').value;
+      const students = sortedStudents(courseId);
+      if (students.length === 0) return;
+      openConfirmModal('Limpiar Registro Mensual', `¿Desea borrar todas las marcas de asistencia del mes de ${month} para este curso?`, () => {
+        students.forEach(stu => {
+          if (appState.attendance[courseId]?.[month]) appState.attendance[courseId][month][stu.id] = {};
+        });
+        markAttDirty(courseId, month, students.map(s => s.id));
+        renderAttendanceSheet();
+        showToast(`Registros de ${month} limpiados.`, 'warning');
+      });
+    }
+
+    function exportCurrentSheetCSV() {
+      const courseId = $('view-course-select').value;
+      const month = $('view-month-select').value;
+      const course = appState.courses.find(c => c.id === courseId);
+      const cfg = getMonthConfig(courseId, month);
+      const students = sortedStudents(courseId);
+      if (!course || students.length === 0) { showToast('No hay datos de estudiantes para exportar.', 'warning'); return; }
+
+      const headers = ['N°', 'Estudiante', 'RUT'];
+      for (let w = 0; w < cfg.weeks; w++) {
+        for (let d = 0; d < cfg.daysPerWeek; d++) for (let b = 0; b < cfg.blocksPerDay; b++) headers.push(`S${w + 1}_D${d + 1}_B${b + 1}`);
+        headers.push(`% Semana ${w + 1}`);
+      }
+      headers.push('% Asistencia Mensual');
+      const rows = [headers.join(';')];
+      students.forEach((stu, idx) => {
+        const attMap = getStudentAttendanceMap(courseId, month, stu.id);
+        const { weeklyPercentages, monthlyPercentage } = calculateStudentPercentages(courseId, month, stu.id, cfg);
+        const row = [idx + 1, `"${stu.name.replace(/"/g, '""')}"`, stu.rut || ''];
+        for (let w = 0; w < cfg.weeks; w++) {
+          for (let d = 0; d < cfg.daysPerWeek; d++) for (let b = 0; b < cfg.blocksPerDay; b++) row.push(attMap[`w${w}_d${d}_b${b}`] ? '1' : '0');
+          row.push(`${weeklyPercentages[w].toFixed(1)}%`);
+        }
+        row.push(`${monthlyPercentage.toFixed(1)}%`);
+        rows.push(row.join(';'));
+      });
+
+      const blob = new Blob(['﻿' + rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Asistencia_${course.name.replace(/\s+/g, '_')}_${month}_CEIA_Inapewma.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      showToast(`Planilla CSV de ${month} descargada.`);
+    }
+
+    // =========================================================================
+    // ANALÍTICA: CONTEXTO COMÚN
+    // =========================================================================
+    function onViewCourseOrMonthChange() {
+      populateAnalyticsSubjects();
+      renderAttendanceSheet();
+    }
+
+    function populateAnalyticsSubjects() {
+      const courseId = $('view-course-select').value;
+      const subjectSelect = $('analytics-subject-select');
+      if (!subjectSelect) return;
+      const prevValue = subjectSelect.value;
+      const course = appState.courses.find(c => c.id === courseId);
+      const students = sortedStudents(courseId);
+      subjectSelect.innerHTML = '';
+      subjectSelect.appendChild(new Option(course ? `Curso Completo: ${course.name}` : 'Todo el Curso', 'COURSE'));
+      students.forEach(stu => subjectSelect.appendChild(new Option(`Estudiante: ${stu.name}`, stu.id)));
+      subjectSelect.value = prevValue && (prevValue === 'COURSE' || students.some(s => s.id === prevValue)) ? prevValue : 'COURSE';
+    }
+
+    function setSegActive(groupId, activeId) {
+      $(groupId).querySelectorAll('.seg-btn').forEach(b => {
+        const on = b.id === activeId;
+        b.classList.toggle('bg-white', on);
+        b.classList.toggle('text-brand-800', on);
+        b.classList.toggle('shadow-sm', on);
+        b.classList.toggle('text-slate-600', !on);
+        b.classList.toggle('hover:text-slate-900', !on);
+      });
+    }
+
+    function setAnalyticsTimeframe(tf) {
+      appState.analyticsTimeframe = tf;
+      setSegActive('scope-group', tf === 'weekly' ? 'btn-scope-weekly' : 'btn-scope-monthly');
+      renderAnalyticsPanel();
+    }
+
+    function setChartMode(mode) {
+      appState.chartMode = mode;
+      setSegActive('mode-group', `btn-mode-${mode}`);
+      renderAnalyticsPanel();
+    }
+
+    function getAnalyticsContext() {
+      const courseId = $('view-course-select').value;
+      const month = $('view-month-select').value;
+      const subjectVal = $('analytics-subject-select')?.value || 'COURSE';
+      const timeframe = appState.analyticsTimeframe;
+      const course = appState.courses.find(c => c.id === courseId);
+      const students = sortedStudents(courseId);
+      if (!course || students.length === 0) return null;
+
+      const selectedStudent = subjectVal !== 'COURSE' ? students.find(s => s.id === subjectVal) || null : null;
+      const isIndividual = !!selectedStudent;
+      const subjectLabel = isIndividual ? selectedStudent.name : `${course.name} (Promedio Curso)`;
+      const cfg = getMonthConfig(courseId, month);
+      const dataPoints = [];
+
+      if (timeframe === 'weekly') {
+        for (let w = 0; w < cfg.weeks; w++) {
+          let pct;
+          if (isIndividual) pct = calculateStudentPercentages(courseId, month, selectedStudent.id, cfg).weeklyPercentages[w] || 0;
+          else pct = students.reduce((s, st) => s + (calculateStudentPercentages(courseId, month, st.id, cfg).weeklyPercentages[w] || 0), 0) / students.length;
+          dataPoints.push({ label: `Sem ${w + 1}`, fullLabel: `Semana ${w + 1} (${month})`, value: pct });
+        }
+      } else {
+        MONTHS.forEach(m => {
+          const mCfg = getMonthConfig(courseId, m);
+          let pct;
+          if (isIndividual) pct = calculateStudentPercentages(courseId, m, selectedStudent.id, mCfg).monthlyPercentage;
+          else pct = students.reduce((s, st) => s + calculateStudentPercentages(courseId, m, st.id, mCfg).monthlyPercentage, 0) / students.length;
+          dataPoints.push({ label: m.slice(0, 3), fullLabel: m, value: pct });
+        });
+      }
+      return { courseId, month, course, students, isIndividual, selectedStudent, subjectLabel, timeframe, cfg, dataPoints };
+    }
+
+    // =========================================================================
+    // GRÁFICOS (Chart.js)
+    // =========================================================================
+    if (window.Chart) {
+      Chart.defaults.font.family = "'Inter', Arial, sans-serif";
+      Chart.defaults.color = '#475569';
+    }
+    const charts = {};
+
+    function upsertChart(key, canvasId, config) {
+      const canvas = $(canvasId);
+      if (!canvas || !window.Chart) return;
+      canvas.parentElement.querySelectorAll('[data-empty]').forEach(e => { e.classList.add('hidden'); e.classList.remove('flex'); });
+      const existing = charts[key];
+      if (existing && existing.config.type === config.type) {
+        existing.data = config.data;
+        existing.options = config.options;
+        existing.update();
+        return;
+      }
+      if (existing) existing.destroy();
+      charts[key] = new Chart(canvas.getContext('2d'), config);
+    }
+
+    function clearCharts() {
+      Object.keys(charts).forEach(k => { charts[k].destroy(); delete charts[k]; });
+      ['chart-main', 'chart-donut', 'chart-ranking'].forEach(id => {
+        const c = $(id);
+        if (c) c.parentElement.querySelectorAll('[data-empty]').forEach(e => { e.classList.remove('hidden'); e.classList.add('flex'); });
+      });
+    }
+
+    // Plugins propios
+    const bgPlugin = { id: 'bgWhite', beforeDraw(c) { c.ctx.save(); c.ctx.fillStyle = '#fff'; c.ctx.fillRect(0, 0, c.width, c.height); c.ctx.restore(); } };
+
+    const zonesPlugin = {
+      id: 'zones',
+      beforeDatasetsDraw(chart) {
+        const y = chart.scales.y; if (!y) return;
+        const { left, right } = chart.chartArea; const ctx = chart.ctx;
+        ctx.save();
+        [[0, 70, 'rgba(220,38,38,.055)'], [70, 85, 'rgba(245,158,11,.08)'], [85, 100, 'rgba(22,163,74,.08)']].forEach(([a, b, col]) => {
+          ctx.fillStyle = col;
+          const y1 = y.getPixelForValue(b), y2 = y.getPixelForValue(a);
+          ctx.fillRect(left, y1, right - left, y2 - y1);
+        });
+        ctx.restore();
+      }
+    };
+
+    const valueLabelsPlugin = {
+      id: 'valueLabels',
+      afterDatasetsDraw(chart, args, opts) {
+        if (!opts || opts.display === false) return;
+        const ds = chart.data.datasets[0]; const meta = chart.getDatasetMeta(0); const ctx = chart.ctx;
+        const horizontal = chart.options.indexAxis === 'y';
+        const isBar = chart.config.type === 'bar';
+        ctx.save();
+        ctx.font = `800 ${opts.fontSize || 11}px Inter, Arial, sans-serif`;
+        ctx.fillStyle = '#1e293b';
+        meta.data.forEach((el, i) => {
+          const v = ds.data[i]; if (v == null) return;
+          const txt = `${Number(v).toFixed(1)}%`;
+          if (horizontal) { ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(txt, el.x + 8, el.y); }
+          else { ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillText(txt, el.x, el.y - (isBar ? 6 : (opts.offset || 15))); }
+        });
+        ctx.restore();
+      }
+    };
+
+    const goalLinePlugin = {
+      id: 'goalLine',
+      afterDatasetsDraw(chart) {
+        const x = chart.scales.x; if (!x) return;
+        const px = x.getPixelForValue(85); const { top, bottom } = chart.chartArea; const ctx = chart.ctx;
+        ctx.save(); ctx.strokeStyle = '#16a34a'; ctx.lineWidth = 1.5; ctx.setLineDash([5, 4]);
+        ctx.beginPath(); ctx.moveTo(px, top); ctx.lineTo(px, bottom); ctx.stroke(); ctx.restore();
+      }
+    };
+
+    const centerTextPlugin = {
+      id: 'centerText',
+      afterDraw(chart, args, opts) {
+        if (!opts || opts.value == null) return;
+        const { left, right, top, bottom } = chart.chartArea; const ctx = chart.ctx; const fs = opts.fs || 12;
+        const cx = (left + right) / 2, cy = (top + bottom) / 2;
+        ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#0f172a'; ctx.font = `800 ${fs * 2.2}px Inter, Arial, sans-serif`;
+        ctx.fillText(opts.value, cx, cy - fs * 0.45);
+        ctx.fillStyle = '#64748b'; ctx.font = `600 ${fs * 0.95}px Inter, Arial, sans-serif`;
+        ctx.fillText(opts.label || '', cx, cy + fs * 1.5);
+        ctx.restore();
+      }
+    };
+
+    function buildMainChartConfig(points, mode, o = {}) {
+      const k = o.k || 1; const fs = o.fs || 12;
+      const vals = points.map(p => round1(p.value));
+      const colors = vals.map(statusColor);
+      const base = { label: 'Asistencia', data: vals, order: 1 };
+      let ds;
+      if (mode === 'bars') {
+        ds = { ...base, type: 'bar', backgroundColor: colors.map(c => c + 'dd'), borderRadius: 10 * k, borderSkipped: false, maxBarThickness: 64 * k };
+      } else if (mode === 'area') {
+        ds = {
+          ...base, type: 'line', tension: 0.4, fill: true, borderColor: '#0a6bb0', borderWidth: 3 * k,
+          backgroundColor: (c) => {
+            const { ctx, chartArea } = c.chart; if (!chartArea) return 'rgba(10,124,196,.15)';
+            const g = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+            g.addColorStop(0, 'rgba(10,124,196,.38)'); g.addColorStop(1, 'rgba(10,124,196,0)'); return g;
+          },
+          pointRadius: 6 * k, pointHoverRadius: 9 * k, pointBackgroundColor: colors, pointBorderColor: '#fff', pointBorderWidth: 2.5 * k
+        };
+      } else {
+        ds = {
+          ...base, type: 'line', tension: 0.3, fill: false, borderColor: 'rgba(10,107,176,.35)', borderWidth: 2.5 * k,
+          pointRadius: 10 * k, pointHoverRadius: 13 * k, pointBackgroundColor: colors, pointBorderColor: '#fff', pointBorderWidth: 3 * k
+        };
+      }
+      const goal = { type: 'line', label: 'Meta 85%', data: points.map(() => 85), borderColor: '#16a34a', borderDash: [6 * k, 5 * k], borderWidth: 1.6 * k, pointRadius: 0, pointHoverRadius: 0, fill: false, order: 2 };
+      return {
+        type: mode === 'bars' ? 'bar' : 'line',
+        data: { labels: points.map(p => p.label), datasets: [ds, goal] },
+        options: {
+          responsive: !o.offscreen, maintainAspectRatio: false,
+          animation: o.offscreen ? false : { duration: 550, easing: 'easeOutQuart' },
+          layout: { padding: { top: 30 * k, right: 16 * k, left: 2, bottom: 2 } },
+          interaction: { mode: 'index', intersect: false },
+          scales: {
+            y: { min: 0, max: 100, ticks: { stepSize: 25, callback: v => v + '%', font: { size: fs, weight: '600' }, padding: 6 * k }, grid: { color: 'rgba(148,163,184,.35)', drawTicks: false }, border: { display: false } },
+            x: { grid: { display: false }, ticks: { font: { size: fs, weight: '700' }, color: '#334155' }, border: { color: '#cbd5e1' } }
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              filter: i => i.datasetIndex === 0, backgroundColor: '#0b2f4d', padding: 12, cornerRadius: 10, displayColors: false,
+              titleFont: { weight: '700' },
+              callbacks: {
+                title: i => points[i[0].dataIndex].fullLabel,
+                label: c => `Asistencia: ${c.parsed.y.toFixed(1)}%`,
+                afterLabel: c => `Estado: ${statusText(c.parsed.y)}`
+              }
+            },
+            valueLabels: { fontSize: fs, offset: 15 * k }
+          }
+        },
+        plugins: [...(o.offscreen ? [bgPlugin] : []), zonesPlugin, valueLabelsPlugin]
+      };
+    }
+
+    function computeDonutData(ctx) {
+      const { courseId, month, students, cfg, isIndividual, selectedStudent } = ctx;
+      if (isIndividual) {
+        const total = cfg.weeks * cfg.daysPerWeek * cfg.blocksPerDay;
+        const map = getStudentAttendanceMap(courseId, month, selectedStudent.id);
+        let present = 0;
+        for (let w = 0; w < cfg.weeks; w++) for (let d = 0; d < cfg.daysPerWeek; d++) for (let b = 0; b < cfg.blocksPerDay; b++) if (map[`w${w}_d${d}_b${b}`]) present++;
+        const pct = calculateStudentPercentages(courseId, month, selectedStudent.id, cfg).monthlyPercentage;
+        return {
+          title: 'Bloques del Estudiante', subtitle: `Asistidos vs. inasistidos en ${month}`,
+          labels: ['Bloques asistidos', 'Bloques inasistidos'], data: [present, total - present],
+          colors: ['#16a34a', '#ef4444'], center: `${pct.toFixed(1)}%`, centerLabel: 'Asistencia'
+        };
+      }
+      let ok = 0, warn = 0, crit = 0, sum = 0;
+      students.forEach(st => {
+        const p = calculateStudentPercentages(courseId, month, st.id, cfg).monthlyPercentage;
+        sum += p; if (p >= 85) ok++; else if (p >= 70) warn++; else crit++;
+      });
+      return {
+        title: 'Distribución de Estudiantes', subtitle: `Según su asistencia en ${month}`,
+        labels: ['Óptimo (≥ 85%)', 'Alerta (70 – 84.9%)', 'Crítico (< 70%)'], data: [ok, warn, crit],
+        colors: ['#16a34a', '#f59e0b', '#dc2626'], center: `${(sum / students.length).toFixed(1)}%`, centerLabel: 'Promedio curso'
+      };
+    }
+
+    function buildDonutConfig(d, o = {}) {
+      const k = o.k || 1; const fs = o.fs || 12;
+      const total = d.data.reduce((a, b) => a + b, 0);
+      return {
+        type: 'doughnut',
+        data: { labels: d.labels, datasets: [{ data: d.data, backgroundColor: d.colors, borderColor: '#ffffff', borderWidth: 4 * k, hoverOffset: 8 * k, spacing: 2 }] },
+        options: {
+          responsive: !o.offscreen, maintainAspectRatio: false, cutout: '70%',
+          animation: o.offscreen ? false : { duration: 600 },
+          layout: { padding: 6 * k },
+          plugins: {
+            legend: { position: 'bottom', labels: { usePointStyle: true, pointStyle: 'circle', boxWidth: 8 * k, padding: 14 * k, font: { size: fs, weight: '600' } } },
+            tooltip: { backgroundColor: '#0b2f4d', padding: 10, cornerRadius: 10, callbacks: { label: c => ` ${c.label}: ${c.parsed} (${total ? ((c.parsed / total) * 100).toFixed(0) : 0}%)` } },
+            centerText: { value: d.center, label: d.centerLabel, fs }
+          }
+        },
+        plugins: [...(o.offscreen ? [bgPlugin] : []), centerTextPlugin]
+      };
+    }
+
+    function shortName(n) { return n.length > 30 ? n.slice(0, 29) + '…' : n; }
+
+    function buildRankingConfig(items, selectedId) {
+      return {
+        type: 'bar',
+        data: {
+          labels: items.map(i => shortName(i.name)),
+          datasets: [{ data: items.map(i => round1(i.pct)), backgroundColor: items.map(i => statusColor(i.pct) + (selectedId && i.id !== selectedId ? '55' : 'dd')), borderRadius: 6, borderSkipped: false, barThickness: 16 }]
+        },
+        options: {
+          indexAxis: 'y', responsive: true, maintainAspectRatio: false, animation: { duration: 500 },
+          layout: { padding: { right: 50 } },
+          scales: {
+            x: { min: 0, max: 100, ticks: { stepSize: 25, callback: v => v + '%' }, grid: { color: 'rgba(148,163,184,.3)' }, border: { display: false } },
+            y: { grid: { display: false }, ticks: { font: { size: 11, weight: '600' }, color: '#334155' }, border: { display: false } }
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#0b2f4d', padding: 10, cornerRadius: 10, displayColors: false,
+              callbacks: { title: i => items[i[0].dataIndex].name, label: c => `${c.parsed.x.toFixed(1)}% · ${statusText(c.parsed.x)}` }
+            },
+            valueLabels: { fontSize: 11 }
+          }
+        },
+        plugins: [goalLinePlugin, valueLabelsPlugin]
+      };
+    }
+
+    // =========================================================================
+    // PANEL ANALÍTICO: gráficos + tabla de síntesis
+    // =========================================================================
+    function renderAnalyticsPanel() {
+      const tableContainer = $('synthesis-table-container');
+      if (!tableContainer) return;
+      const ctx = getAnalyticsContext();
+
+      if (!ctx) {
+        clearCharts();
+        tableContainer.innerHTML = `<div class="p-8 text-center text-xs text-slate-400">Sin registros disponibles.</div>`;
+        return;
+      }
+      const { month, timeframe, isIndividual, selectedStudent, subjectLabel, students, courseId, cfg } = ctx;
+
+      $('synthesis-badge').textContent = isIndividual ? 'Individual' : 'Curso Completo';
+      if (timeframe === 'weekly') {
+        $('chart-title').textContent = `Evolución Semanal — ${month}`;
+        $('chart-subtitle').textContent = `Comportamiento por semana de: ${subjectLabel}`;
+        $('synthesis-title').textContent = `Síntesis Semanal (${month})`;
+        $('synthesis-subtitle').textContent = isIndividual ? `Detalle semanal y promedio mensual de ${selectedStudent.name}` : `Resumen por estudiante en ${month}`;
+      } else {
+        $('chart-title').textContent = 'Evolución Mensual (Marzo - Diciembre)';
+        $('chart-subtitle').textContent = `Evolución anual consolidada de: ${subjectLabel}`;
+        $('synthesis-title').textContent = 'Síntesis Anual por Mes';
+        $('synthesis-subtitle').textContent = `Porcentajes mensuales acumulados de ${subjectLabel}`;
+      }
+
+      // 1) Gráfico principal
+      upsertChart('main', 'chart-main', buildMainChartConfig(ctx.dataPoints, appState.chartMode));
+
+      // 2) Dona
+      const donut = computeDonutData(ctx);
+      $('donut-title').textContent = donut.title;
+      $('donut-subtitle').textContent = donut.subtitle;
+      upsertChart('donut', 'chart-donut', buildDonutConfig(donut));
+
+      // 3) Ranking
+      const ranking = students
+        .map(st => ({ id: st.id, name: st.name, pct: calculateStudentPercentages(courseId, month, st.id, cfg).monthlyPercentage }))
+        .sort((a, b) => b.pct - a.pct);
+      $('ranking-subtitle').textContent = `Porcentaje mensual de ${month}${isIndividual ? ' · estudiante seleccionado resaltado' : ''}`;
+      $('ranking-inner').style.height = `${Math.max(240, ranking.length * 30 + 40)}px`;
+      upsertChart('ranking', 'chart-ranking', buildRankingConfig(ranking, isIndividual ? selectedStudent.id : null));
+
+      // 4) Tabla de síntesis
+      renderSynthesisTable(tableContainer, ctx);
+    }
+
+    function renderSynthesisTable(container, ctx) {
+      const { courseId, month, students, isIndividual, timeframe, dataPoints } = ctx;
+
+      if (timeframe === 'weekly' && !isIndividual) {
+        const cfg = getMonthConfig(courseId, month);
+        let weekHeaders = '';
+        for (let w = 0; w < cfg.weeks; w++) weekHeaders += `<th class="px-2.5 py-2.5 text-center font-bold text-slate-600">S${w + 1}</th>`;
+        let rowsHtml = '', sumMonthly = 0;
+        const weekTotals = new Array(cfg.weeks).fill(0);
+        students.forEach(st => {
+          const { weeklyPercentages, monthlyPercentage } = calculateStudentPercentages(courseId, month, st.id, cfg);
+          sumMonthly += monthlyPercentage;
+          let wCells = '';
+          weeklyPercentages.forEach((wp, idx) => { weekTotals[idx] += wp; wCells += `<td class="px-2.5 py-2 text-center text-xs text-slate-700 font-medium">${wp.toFixed(1)}%</td>`; });
+          rowsHtml += `
+            <tr class="border-b border-slate-100 hover:bg-slate-50">
+              <td class="px-3 py-2 text-xs font-semibold text-slate-800 truncate max-w-[160px]" title="${esc(st.name)}">${esc(st.name)}</td>
+              ${wCells}
+              <td class="px-2.5 py-2 text-center"><span class="px-2 py-0.5 rounded-md text-[11px] font-extrabold border ${getBadgeColorClass(monthlyPercentage)}">${monthlyPercentage.toFixed(1)}%</span></td>
+            </tr>`;
+        });
+        const avgWeeklyCells = weekTotals.map(t => `<td class="px-2.5 py-2.5 text-center text-xs font-extrabold text-brand-800">${(t / students.length).toFixed(1)}%</td>`).join('');
+        container.innerHTML = `
+          <table class="w-full text-left border-collapse">
+            <thead class="bg-slate-100 text-[11px] uppercase tracking-wider border-b border-slate-200 sticky top-0">
+              <tr><th class="px-3 py-2.5 font-bold text-slate-700">Estudiante</th>${weekHeaders}<th class="px-2.5 py-2.5 text-center font-extrabold text-emerald-800">Mensual</th></tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+            <tfoot class="bg-brand-50/90 border-t-2 border-brand-100">
+              <tr><td class="px-3 py-2.5 text-xs font-extrabold text-brand-900">Promedio Curso</td>${avgWeeklyCells}<td class="px-2.5 py-2.5 text-center text-xs font-extrabold text-emerald-700">${(sumMonthly / students.length).toFixed(1)}%</td></tr>
+            </tfoot>
+          </table>`;
+      } else {
+        const avgTotal = dataPoints.reduce((acc, p) => acc + p.value, 0) / (dataPoints.length || 1);
+        const rowsHtml = dataPoints.map(pt => `
+          <tr class="border-b border-slate-100 hover:bg-slate-50">
+            <td class="px-3.5 py-2.5 text-xs font-semibold text-slate-800">${esc(pt.fullLabel)}</td>
+            <td class="px-3.5 py-2.5 text-center"><span class="px-2.5 py-0.5 rounded-md text-xs font-extrabold border ${getBadgeColorClass(pt.value)}">${pt.value.toFixed(1)}%</span></td>
+            <td class="px-3.5 py-2.5 text-right text-[11px] font-semibold text-slate-500">${statusText(pt.value)}</td>
+          </tr>`).join('');
+        container.innerHTML = `
+          <table class="w-full text-left border-collapse">
+            <thead class="bg-slate-100 text-[11px] uppercase tracking-wider border-b border-slate-200 sticky top-0">
+              <tr><th class="px-3.5 py-2.5 font-bold text-slate-700">Período</th><th class="px-3.5 py-2.5 text-center font-bold text-slate-700">% Asistencia</th><th class="px-3.5 py-2.5 text-right font-bold text-slate-700">Estado</th></tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+            <tfoot class="bg-brand-50/90 border-t-2 border-brand-100">
+              <tr><td class="px-3.5 py-2.5 text-xs font-extrabold text-brand-900">Promedio Consolidado</td><td class="px-3.5 py-2.5 text-center text-xs font-extrabold text-brand-800">${avgTotal.toFixed(1)}%</td><td class="px-3.5 py-2.5 text-right text-[11px] font-bold text-brand-700">${dataPoints.length} per.</td></tr>
+            </tfoot>
+          </table>`;
+      }
+    }
+
+    // =========================================================================
+    // REPORTE PDF / VISTA PREVIA / IMPRESIÓN (HOJA CARTA VERTICAL)
+    // =========================================================================
+    /** Renderiza un gráfico fuera de pantalla en alta resolución y devuelve un PNG (data URL). */
+    function renderOffscreenChart(config, w, h) {
+      const cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      config.options.responsive = false;
+      config.options.animation = false;
+      config.options.devicePixelRatio = 1;
+      const ch = new Chart(cv.getContext('2d'), config);
+      const url = cv.toDataURL('image/png');
+      ch.destroy();
+      return url;
+    }
+
+    async function buildPortraitLetterReportData() {
+      const ctx = getAnalyticsContext();
+      if (!ctx) return null;
+      const { courseId, month, course, students, isIndividual, selectedStudent, timeframe, cfg, dataPoints } = ctx;
+
+      const subjectLabel = isIndividual
+        ? `${esc(selectedStudent.name)}${selectedStudent.rut ? ` (RUT: ${esc(selectedStudent.rut)})` : ''}`
+        : `Curso Completo — ${esc(course.name)} (${esc(course.shift)})`;
+      const scopeLabel = timeframe === 'weekly' ? `Comportamiento Semanal — Mes de ${month}` : 'Comportamiento Mensual Consolidado (Marzo - Diciembre)';
+
+      const kpiStructure = $('kpi-structure').textContent;
+      const kpiStudents = $('kpi-students').textContent;
+      const kpiAvg = $('kpi-avg-attendance').textContent;
+      const kpiRisk = $('kpi-risk-count').textContent;
+
+      // Gráficos en alta resolución
+      let mainImg = '', donutImg = '';
+      try {
+        mainImg = renderOffscreenChart(buildMainChartConfig(dataPoints, appState.chartMode, { offscreen: true, k: 2, fs: 22 }), 1180, 520);
+        donutImg = renderOffscreenChart(buildDonutConfig(computeDonutData(ctx), { offscreen: true, k: 2, fs: 22 }), 560, 520);
+      } catch (e) { console.error('No se pudieron renderizar los gráficos del reporte', e); }
+
+      const sorted = [...dataPoints].sort((a, b) => b.value - a.value);
+      const fmt = p => p ? `${p.fullLabel} (${p.value.toFixed(1)}%)` : '—';
+      const highestLabel = fmt(sorted[0]);
+      const lowestLabel = fmt(sorted[sorted.length - 1]);
+
+      const todayStr = new Date().toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      const isDense = students.length > 14;
+      const cellPadY = isDense ? '2.5px' : '4px';
+      const cellFont = isDense ? '8.5px' : '9.5px';
+      const synthesisTableHtml = $('synthesis-table-container').innerHTML;
+
+      const html = `
+        <div style="width: 760px; padding: 18px 22px; background-color: #ffffff; font-family: 'Inter', Arial, sans-serif; color: #0f172a; box-sizing: border-box;">
+          <style>
+            .portrait-pdf-table table { width: 100%; border-collapse: collapse; table-layout: auto; }
+            .portrait-pdf-table th { padding: 4.5px 6px !important; font-size: 8.5px !important; background-color: #f1f5f9 !important; color: #334155 !important; border-bottom: 1.5px solid #cbd5e1 !important; position: static !important; white-space: nowrap; }
+            .portrait-pdf-table td { padding: ${cellPadY} 6px !important; font-size: ${cellFont} !important; border-bottom: 1px solid #e2e8f0 !important; word-break: break-word; max-width: none !important; white-space: normal !important; }
+            .portrait-pdf-table tfoot td { padding: 5px 6px !important; font-size: 9px !important; background-color: #eef7fd !important; border-top: 1.5px solid #8cc4e8 !important; }
+          </style>
+
+          <div style="height: 4px; display: flex; margin-bottom: 8px;"><span style="flex:1;background:#c8242b"></span><span style="flex:1;background:#c3a932"></span><span style="flex:1;background:#067ac4"></span><span style="flex:1;background:#78ae44"></span></div>
+
+          <div style="border-bottom: 2px solid #0b2f4d; padding-bottom: 8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+            <div style="display:flex; align-items:center; gap: 12px; flex:1;">
+              <img src="${LOGO}" alt="Insignia" style="height: 52px; width: auto;" />
+              <div>
+                <div style="font-size: 8.5px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; color: #085a93; margin-bottom: 2px;">Educación de Jóvenes y Adultos · Coronel, Región del Biobío</div>
+                <h1 style="font-size: 15px; font-weight: 800; color: #0f172a; margin: 0; line-height: 1.2;">CEIA INAPEWMA CORONEL — Informe de Asistencia</h1>
+                <p style="font-size: 9.5px; color: #334155; margin: 3px 0 0 0; line-height: 1.35;"><strong>Alcance:</strong> ${subjectLabel}<br/><strong>Período / Vista:</strong> ${scopeLabel}</p>
+              </div>
+            </div>
+            <div style="text-align: right; font-size: 9px; color: #64748b;">
+              <div style="font-weight: 800; color: #0b2f4d; font-size: 10px;">INSPECTORÍA GENERAL</div>
+              <div>Formato Carta Vertical</div>
+              <div>Emitido: ${todayStr}</div>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; margin-bottom: 10px;">
+            ${[['Estructura (' + month + ')', kpiStructure, '#0f172a'], ['Matrícula Activa', kpiStudents, '#06456f'], ['Promedio Mensual', kpiAvg, '#059669'], ['Bajo 85% (Alerta)', kpiRisk, '#d97706']].map(([t, v, c]) => `
+              <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 7px; padding: 5px 8px;">
+                <div style="font-size: 8px; font-weight: 700; color: #64748b; text-transform: uppercase;">${esc(t)}</div>
+                <div style="font-size: 10.5px; font-weight: 800; color: ${c}; margin-top: 2px;">${esc(v)}</div>
+              </div>`).join('')}
+          </div>
+
+          <div style="border: 1px solid #cbd5e1; border-radius: 9px; padding: 8px 10px; background: #ffffff; margin-bottom: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; border-bottom: 1px solid #f1f5f9; padding-bottom: 4px;">
+              <span style="font-size: 11px; font-weight: 800; color: #0f172a;">1. Evolución de Asistencia y Distribución</span>
+              <span style="font-size: 8px; color: #475569; font-weight: 700;">
+                <span style="color: #16a34a;">●</span> ≥85% Óptimo &nbsp;<span style="color: #f59e0b;">●</span> 70-84.9% Alerta &nbsp;<span style="color: #dc2626;">●</span> &lt;70% Crítico
+              </span>
+            </div>
+            <div style="display: grid; grid-template-columns: 2.1fr 1fr; gap: 8px; align-items: center;">
+              ${mainImg ? `<img src="${mainImg}" alt="Gráfico de asistencia" style="width: 100%; height: auto; display: block;" />` : ''}
+              ${donutImg ? `<img src="${donutImg}" alt="Distribución" style="width: 100%; height: auto; display: block;" />` : ''}
+            </div>
+            <div style="margin-top: 6px; padding-top: 5px; border-top: 1px solid #e2e8f0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 9px;">
+              <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 5px; padding: 4px 8px;"><span style="color: #166534; font-weight: 700;">Mayor Asistencia:</span> <strong style="color: #14532d; margin-left: 4px;">${esc(highestLabel)}</strong></div>
+              <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 5px; padding: 4px 8px;"><span style="color: #92400e; font-weight: 700;">Menor Asistencia:</span> <strong style="color: #78350f; margin-left: 4px;">${esc(lowestLabel)}</strong></div>
+            </div>
+          </div>
+
+          <div style="border: 1px solid #cbd5e1; border-radius: 9px; overflow: hidden; background: #ffffff;">
+            <div style="background: #0b2f4d; color: #ffffff; padding: 5px 10px; font-size: 10.5px; font-weight: 800; display: flex; justify-content: space-between; align-items: center;">
+              <span>2. Tabla de Síntesis de Porcentajes</span>
+              <span style="font-size: 8px; font-weight: 600; background: rgba(255,255,255,0.18); padding: 1px 6px; border-radius: 4px;">${isIndividual ? 'Reporte Individual' : 'Reporte Curso Completo'}</span>
+            </div>
+            <div class="portrait-pdf-table">${synthesisTableHtml}</div>
+          </div>
+
+          <div style="margin-top: 8px; padding-top: 5px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; font-size: 8px; color: #64748b;">
+            <span><strong>CEIA Inapewma Coronel</strong> — Plataforma de Gestión y Proyección de Asistencia</span>
+            <span>Meta Institucional: ≥ 85.0% · Documento Oficial</span>
+          </div>
+        </div>`;
+
+      const safeSubject = isIndividual ? selectedStudent.name.split(',')[0].trim().replace(/\s+/g, '_') : course.name.replace(/\s+/g, '_');
+      const periodTag = timeframe === 'weekly' ? `${month}_Semanal` : 'Anual_Mar_Dic';
+      return { html, fileName: `Reporte_Asistencia_${safeSubject}_${periodTag}_CEIA_Inapewma.pdf` };
+    }
+
+    async function openReportPreviewModal() {
+      const reportData = await buildPortraitLetterReportData();
+      if (!reportData) { showToast('No hay datos suficientes para generar la vista previa.', 'warning'); return; }
+      $('pdf-preview-sheet-container').innerHTML = reportData.html;
+      const modal = $('pdf-preview-modal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      refreshIcons();
+    }
+
+    function closeReportPreviewModal() {
+      const modal = $('pdf-preview-modal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    function printPreviewReport() {
+      const sheet = $('pdf-preview-sheet-container');
+      if (!sheet || !sheet.innerHTML.trim()) return;
+      const printWin = window.open('', '_blank', 'width=900,height=1100');
+      if (!printWin) { showToast('Permita las ventanas emergentes para imprimir o use "Descargar PDF".', 'warning'); return; }
+      printWin.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8" /><title>Imprimir Reporte — CEIA Inapewma Coronel</title>
+        <style>@page { size: letter portrait; margin: 6mm; } body { margin: 0; padding: 0; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }</style>
+        </head><body>${sheet.innerHTML}
+        <script>window.onload = function () { setTimeout(function () { window.print(); window.close(); }, 250); };<\/script>
+        </body></html>`);
+      printWin.document.close();
+    }
+
+    async function downloadReportFromPreview() {
+      closeReportPreviewModal();
+      await exportAnalyticsReportPDF();
+    }
+
+    async function exportAnalyticsReportPDF() {
+      const btn = $('btn-export-pdf');
+      const originalBtnHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i><span>Generando PDF...</span>`;
+      refreshIcons();
+      let host = null;
+      try {
+        const reportData = await buildPortraitLetterReportData();
+        if (!reportData) { showToast('No hay datos suficientes para generar el reporte PDF.', 'warning'); return; }
+        host = document.createElement('div');
+        host.style.cssText = 'position:fixed;left:-10000px;top:0;z-index:-1;background:#fff;';
+        host.innerHTML = reportData.html;
+        document.body.appendChild(host);
+        await new Promise(r => requestAnimationFrame(() => setTimeout(r, 150)));
+        await html2pdf().set({
+          margin: [5, 5, 5, 5],
+          filename: reportData.fileName,
+          image: { type: 'png', quality: 1.0 },
+          html2canvas: { scale: 2.5, useCORS: true, logging: false, backgroundColor: '#ffffff', windowWidth: 820 },
+          jsPDF: { unit: 'mm', format: 'letter', orientation: 'portrait' },
+          pagebreak: { mode: ['avoid-all'] }
+        }).from(host.firstElementChild).save();
+        showToast(`Reporte PDF "${reportData.fileName}" descargado en formato Carta Vertical.`);
+      } catch (err) {
+        console.error('Error generando PDF:', err);
+        showToast('No se pudo generar el archivo PDF. Intente nuevamente.', 'error');
+      } finally {
+        if (host && host.parentNode) host.parentNode.removeChild(host);
+        btn.disabled = false;
+        btn.innerHTML = originalBtnHtml;
+        refreshIcons();
+      }
+    }
+
+    // =========================================================================
+    // ARRANQUE
+    // =========================================================================
+    window.addEventListener('DOMContentLoaded', () => {
+      // Insignia en todas las vistas + favicon
+      document.querySelectorAll('img[data-logo]').forEach(img => { img.src = LOGO; });
+      if (LOGO) {
+        const link = document.createElement('link');
+        link.rel = 'icon'; link.href = LOGO;
+        document.head.appendChild(link);
+      }
+      fillMonthSelects();
+      setSegActive('scope-group', 'btn-scope-weekly');
+      setSegActive('mode-group', 'btn-mode-dots');
+      $('tab-btn-inspectoria').className = NAV_OFF;
+      $('tab-btn-visualizacion').className = NAV_ON;
+
+      if (DEMO) {
+        session.user = 'Modo demostración'; setSessionRole('admin', true);
+        if (!loadLocal()) { initDemoData(); saveLocalSoon(); }
+        $('demo-banner').classList.remove('hidden');
+        $('load-overlay').classList.add('hidden');
+        setSync('demo');
+        applyAuthUI();
+        renderAll();
+        switchMainTab('visualizacion');
+      } else {
+        loadSession();
+        bootLoad();
+      }
+      refreshIcons();
+    });
+  </script>
+</body>
+</html>
