@@ -4,6 +4,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CEIA Inapewma Coronel | Gestión de Asistencia</title>
+  <meta name="description" content="Plataforma de control y proyección de asistencia — CEIA INAPEWMA Coronel" />
+  <!-- Aplicación instalable (PWA) -->
+  <meta name="theme-color" content="#555452" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Asistencia CEIA" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" type="image/png" href="icons/favicon.png" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com/3.4.16"></script>
   <!-- Google Fonts: Inter -->
@@ -50,6 +59,13 @@
       radial-gradient(1000px 500px at 100% -10%, rgba(6,122,196,.07), transparent 60%),
       radial-gradient(800px 400px at -10% 0%, rgba(200,36,43,.05), transparent 60%),
       #f8fafc; }
+    html { -webkit-text-size-adjust: 100%; }
+    body { padding-bottom: env(safe-area-inset-bottom); }
+    /* Móvil: evita el zoom automático de iOS en campos y mejora el área táctil */
+    @media (max-width: 640px) {
+      input, select, textarea { font-size: 16px !important; }
+      button { touch-action: manipulation; }
+    }
     .card { background:#fff; border-radius:1rem; border:1px solid rgba(226,232,240,.9); box-shadow:0 1px 2px rgba(15,23,42,.04), 0 8px 24px -12px rgba(15,23,42,.08); }
   </style>
 </head>
@@ -69,17 +85,19 @@
   </div>
 
   <!-- Notificaciones Toast -->
-  <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none"></div>
+  <div id="toast-container" class="fixed bottom-4 right-4 left-4 sm:left-auto z-[80] flex flex-col gap-2 sm:max-w-sm w-auto sm:w-full pointer-events-none"></div>
 
-  <!-- Modal de Acceso Administrador -->
-  <div id="login-modal" class="fixed inset-0 bg-brand-900/70 backdrop-blur-sm z-[60] hidden items-center justify-center p-4">
-    <div class="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden animate-fade-in">
+  <!-- Pantalla de acceso (obligatoria: no existe modo visita) -->
+  <div id="login-modal" class="fixed inset-0 z-[60] hidden items-start sm:items-center justify-center p-4 overflow-y-auto bg-gradient-to-br from-brand-900 via-brand-800 to-brand-600">
+    <div class="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden animate-fade-in my-auto">
       <div class="h-1.5 flex"><span class="flex-1 bg-ine-red"></span><span class="flex-1 bg-ine-gold"></span><span class="flex-1 bg-ine-blue"></span><span class="flex-1 bg-ine-green"></span></div>
-      <form id="login-form" onsubmit="submitLogin(event)" class="p-7 space-y-4">
+
+      <!-- Vista: iniciar sesión -->
+      <form id="login-form" onsubmit="submitLogin(event)" class="p-6 sm:p-7 space-y-4">
         <img data-logo alt="Insignia CEIA Inapewma" class="h-24 w-auto mx-auto" />
         <div class="text-center">
-          <h3 class="text-lg font-extrabold text-slate-900">Acceso Administrador</h3>
-          <p id="login-subtitle" class="text-xs text-slate-500 mt-1">Ingrese sus credenciales para cargar y modificar datos.</p>
+          <h3 class="text-lg font-extrabold text-slate-900">Acceso a la Plataforma</h3>
+          <p class="text-xs text-slate-500 mt-1">Uso exclusivo del personal autorizado. Ingrese con su usuario y contraseña.</p>
         </div>
         <div>
           <label for="login-user" class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">Usuario</label>
@@ -89,16 +107,66 @@
           <label for="login-pass" class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">Contraseña</label>
           <div class="relative">
             <input id="login-pass" name="password" type="password" autocomplete="current-password" required class="w-full rounded-xl border border-slate-300 pl-3.5 pr-11 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
-            <button type="button" onclick="toggleLoginPass()" title="Mostrar / ocultar contraseña" class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-700">
-              <i data-lucide="eye" class="w-4 h-4"></i>
-            </button>
+            <button type="button" onclick="toggleLoginPass('login-pass')" title="Mostrar / ocultar contraseña" class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-700"><i data-lucide="eye" class="w-4 h-4"></i></button>
           </div>
         </div>
         <p id="login-error" class="hidden text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2"></p>
         <button id="login-btn" type="submit" class="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold text-white bg-brand-700 hover:bg-brand-800 transition shadow-sm disabled:opacity-60">
           <i data-lucide="log-in" class="w-4 h-4"></i><span>Ingresar</span>
         </button>
-        <button id="login-cancel" type="button" onclick="closeLogin()" class="w-full text-xs font-semibold text-slate-500 hover:text-slate-800 py-1">Continuar como visitante (solo consulta)</button>
+        <button type="button" onclick="showLoginView('forgot')" class="w-full text-xs font-semibold text-brand-700 hover:text-brand-900 py-1">¿Olvidó su contraseña?</button>
+      </form>
+
+      <!-- Vista: solicitar código por correo -->
+      <form id="forgot-form" onsubmit="submitForgot(event)" class="hidden p-6 sm:p-7 space-y-4">
+        <img data-logo alt="Insignia CEIA Inapewma" class="h-20 w-auto mx-auto" />
+        <div class="text-center">
+          <h3 class="text-lg font-extrabold text-slate-900">Recuperar contraseña</h3>
+          <p class="text-xs text-slate-500 mt-1">Escriba su usuario o correo. Le enviaremos un código de 6 dígitos al correo registrado en su cuenta.</p>
+        </div>
+        <div>
+          <label for="forgot-user" class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">Usuario o correo</label>
+          <input id="forgot-user" type="text" autocomplete="username" required class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
+        </div>
+        <p id="forgot-msg" class="hidden text-xs font-semibold rounded-lg px-3 py-2"></p>
+        <button id="forgot-btn" type="submit" class="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold text-white bg-brand-700 hover:bg-brand-800 transition shadow-sm disabled:opacity-60">
+          <i data-lucide="mail" class="w-4 h-4"></i><span>Enviar código al correo</span>
+        </button>
+        <button type="button" onclick="showLoginView('reset')" class="w-full text-xs font-semibold text-brand-700 hover:text-brand-900 py-1">Ya tengo un código</button>
+        <button type="button" onclick="showLoginView('login')" class="w-full text-xs font-semibold text-slate-500 hover:text-slate-800 py-1">← Volver a iniciar sesión</button>
+      </form>
+
+      <!-- Vista: ingresar código y nueva contraseña -->
+      <form id="reset-form" onsubmit="submitReset(event)" class="hidden p-6 sm:p-7 space-y-4">
+        <img data-logo alt="Insignia CEIA Inapewma" class="h-20 w-auto mx-auto" />
+        <div class="text-center">
+          <h3 class="text-lg font-extrabold text-slate-900">Nueva contraseña</h3>
+          <p class="text-xs text-slate-500 mt-1">Ingrese el código recibido por correo (revise también la carpeta de spam) y defina su nueva contraseña.</p>
+        </div>
+        <div>
+          <label for="reset-user" class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">Usuario o correo</label>
+          <input id="reset-user" type="text" autocomplete="username" required class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
+        </div>
+        <div>
+          <label for="reset-code" class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">Código de 6 dígitos</label>
+          <input id="reset-code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-lg tracking-[0.4em] text-center font-bold bg-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
+        </div>
+        <div>
+          <label for="reset-pass" class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">Nueva contraseña (mínimo 8 caracteres)</label>
+          <div class="relative">
+            <input id="reset-pass" type="password" minlength="8" autocomplete="new-password" required class="w-full rounded-xl border border-slate-300 pl-3.5 pr-11 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            <button type="button" onclick="toggleLoginPass('reset-pass')" title="Mostrar / ocultar" class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-700"><i data-lucide="eye" class="w-4 h-4"></i></button>
+          </div>
+        </div>
+        <div>
+          <label for="reset-pass2" class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">Repetir contraseña</label>
+          <input id="reset-pass2" type="password" minlength="8" autocomplete="new-password" required class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
+        </div>
+        <p id="reset-msg" class="hidden text-xs font-semibold rounded-lg px-3 py-2"></p>
+        <button id="reset-btn" type="submit" class="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition shadow-sm disabled:opacity-60">
+          <i data-lucide="key-round" class="w-4 h-4"></i><span>Guardar nueva contraseña</span>
+        </button>
+        <button type="button" onclick="showLoginView('login')" class="w-full text-xs font-semibold text-slate-500 hover:text-slate-800 py-1">← Volver a iniciar sesión</button>
       </form>
     </div>
   </div>
@@ -164,57 +232,68 @@
         </div>
       </div>
       <div class="flex-1 overflow-auto custom-scrollbar p-4 sm:p-6 flex justify-center bg-slate-200/80">
-        <div id="pdf-preview-sheet-container" class="bg-white shadow-xl border border-slate-300 mx-auto" style="width: 760px; min-height: 984px;"></div>
+        <div id="pdf-preview-fit" class="mx-auto">
+          <div id="pdf-preview-sheet-container" class="bg-white shadow-xl border border-slate-300" style="width: 814px; min-height: 1000px; padding: 60px 42px; transform-origin: top left;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Barra superior fija: SIEMPRE muestra el usuario con sesión iniciada -->
+  <div id="topbar" data-mark-only class="hidden sticky top-0 z-50 bg-ine-ink text-white shadow-md">
+    <div class="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8 h-12 flex items-center justify-between gap-2">
+      <div class="flex items-center gap-2 min-w-0">
+        <span class="w-8 h-8 rounded-full bg-white/15 flex items-center justify-center shrink-0"><i data-lucide="user-round" class="w-4 h-4"></i></span>
+        <div class="min-w-0 leading-tight">
+          <div id="auth-user-name" class="text-xs sm:text-sm font-bold truncate"></div>
+          <div id="auth-role" class="text-[10px] text-white/70 truncate"></div>
+        </div>
+      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        <button id="btn-install" type="button" onclick="installApp()" class="hidden inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-ine-gold text-slate-900 hover:brightness-110 transition" title="Instalar como aplicación">
+          <i data-lucide="smartphone" class="w-3.5 h-3.5"></i><span class="hidden sm:inline">Instalar app</span>
+        </button>
+        <button id="sync-chip" type="button" onclick="onSyncChipClick()" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold border bg-slate-50 text-slate-600 border-slate-200 transition" title="Estado de sincronización con Google Sheets">
+          <span id="sync-dot" class="w-2 h-2 rounded-full bg-slate-400"></span><span id="sync-text" class="hidden sm:inline">Conectando…</span>
+        </button>
+        <button id="btn-logout" type="button" onclick="logout()" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-white/15 hover:bg-white/25 transition">
+          <i data-lucide="log-out" class="w-3.5 h-3.5"></i><span>Salir</span>
+        </button>
       </div>
     </div>
   </div>
 
   <!-- Encabezado Institucional -->
-  <header class="bg-white shadow-sm lg:sticky lg:top-0 z-40">
+  <header data-mark-only class="hidden bg-white shadow-sm">
     <div class="h-1.5 flex"><span class="flex-1 bg-ine-red"></span><span class="flex-1 bg-ine-gold"></span><span class="flex-1 bg-ine-blue"></span><span class="flex-1 bg-ine-green"></span></div>
     <div class="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-3">
       <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
-        <div class="flex items-center gap-4">
-          <img data-logo alt="Insignia CEIA Inapewma" class="h-14 sm:h-16 w-auto shrink-0" />
+        <div class="flex items-center gap-3 sm:gap-4">
+          <img data-logo alt="Insignia CEIA Inapewma" class="h-12 sm:h-16 w-auto shrink-0" />
           <div class="hidden sm:block w-px h-11 bg-slate-200"></div>
-          <div>
-            <span class="inline-block px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-ine-gold/20 text-yellow-900 rounded-md">Educación de Jóvenes y Adultos · Coronel</span>
-            <h1 class="text-lg sm:text-xl font-extrabold tracking-tight text-ine-ink leading-tight">CEIA INAPEWMA CORONEL</h1>
+          <div class="min-w-0">
+            <span class="inline-block px-2 py-0.5 text-[9px] sm:text-[10px] font-bold uppercase tracking-wider bg-ine-gold/20 text-yellow-900 rounded-md">Educación de Jóvenes y Adultos · Coronel</span>
+            <h1 class="text-base sm:text-xl font-extrabold tracking-tight text-ine-ink leading-tight">CEIA INAPEWMA CORONEL</h1>
             <p class="text-[11px] sm:text-xs text-slate-500">Sistema Integral de Control y Proyección de Asistencia por Bloques</p>
           </div>
         </div>
 
-        <div class="flex flex-wrap items-center gap-2.5">
-          <nav class="flex bg-slate-100 p-1 rounded-2xl border border-slate-200/70">
-            <button id="tab-btn-inspectoria" onclick="switchMainTab('inspectoria')" class="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all">
-              <i data-lucide="shield-check" class="w-4 h-4"></i>
-              <span>Cargar Datos</span>
-              <i id="tab-lock" data-lucide="lock" class="w-3.5 h-3.5 opacity-70"></i>
-            </button>
-            <button id="tab-btn-visualizacion" onclick="switchMainTab('visualizacion')" class="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all">
-              <i data-lucide="line-chart" class="w-4 h-4"></i>
-              <span>Visualizar y Gráficos</span>
-            </button>
-          </nav>
-
-          <button id="sync-chip" type="button" onclick="onSyncChipClick()" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-[11px] font-bold border bg-slate-50 text-slate-600 border-slate-200 transition" title="Estado de sincronización con Google Sheets">
-            <span id="sync-dot" class="w-2 h-2 rounded-full bg-slate-400"></span><span id="sync-text">Conectando…</span>
+        <nav class="flex w-full lg:w-auto bg-slate-100 p-1 rounded-2xl border border-slate-200/70">
+          <button id="tab-btn-inspectoria" onclick="switchMainTab('inspectoria')" class="flex-1 lg:flex-none justify-center flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all">
+            <i data-lucide="shield-check" class="w-4 h-4"></i>
+            <span>Cargar Datos</span>
+            <i id="tab-lock" data-lucide="lock" class="w-3.5 h-3.5 opacity-70"></i>
           </button>
-
-          <button id="btn-login" data-guest-only type="button" onclick="openLogin(true)" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-brand-700 text-white hover:bg-brand-800 transition shadow-sm">
-            <i data-lucide="log-in" class="w-4 h-4"></i><span>Acceso administrador</span>
+          <button id="tab-btn-visualizacion" onclick="switchMainTab('visualizacion')" class="flex-1 lg:flex-none justify-center flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all">
+            <i data-lucide="line-chart" class="w-4 h-4"></i>
+            <span class="sm:hidden">Visualizar</span><span class="hidden sm:inline">Visualizar Datos y Gráficos</span>
           </button>
-          <div data-mark-only class="hidden inline-flex items-center gap-2 pl-3 pr-1.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800">
-            <i data-lucide="user-check" class="w-4 h-4"></i>
-            <span id="auth-user-name" class="text-xs font-bold"></span>
-            <button id="btn-logout" type="button" onclick="logout()" class="px-2.5 py-1.5 rounded-lg text-[11px] font-bold bg-white border border-emerald-200 hover:bg-emerald-100 transition">Salir</button>
-          </div>
-        </div>
+        </nav>
       </div>
     </div>
   </header>
 
-  <main class="flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+  <main data-mark-only class="hidden flex-1 max-w-[1600px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
 
     <div id="demo-banner" class="hidden mb-5 rounded-2xl border border-amber-300 bg-amber-50 text-amber-900 px-4 py-3 text-xs sm:text-sm">
       <strong>Modo demostración:</strong> los datos se guardan solo en este navegador. Para conectarla a Google Sheets, pegue la URL de Apps Script en <code class="bg-white/70 px-1 rounded">config.js</code>.
@@ -409,6 +488,7 @@
           <form onsubmit="handleSaveUser(event)" class="bg-slate-50 rounded-xl p-4 border border-slate-200/70 space-y-3">
             <label class="block text-xs font-bold uppercase tracking-wider text-slate-500">Crear o editar usuario</label>
             <input id="user-name" type="text" required minlength="3" maxlength="40" autocomplete="off" placeholder="Nombre de usuario (Ej: Profesora Pérez)" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            <input id="user-email" type="email" required maxlength="120" autocomplete="off" placeholder="Correo (para recuperar la contraseña)" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
             <input id="user-pass" type="password" minlength="8" maxlength="80" autocomplete="new-password" placeholder="Contraseña (mínimo 8 caracteres)" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
             <select id="user-role" class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
               <option value="registro">Registro — solo marca asistencia</option>
@@ -430,11 +510,6 @@
 
     <!-- ===================== SECCIÓN 2: VISUALIZAR DATOS ===================== -->
     <section id="section-visualizacion" class="hidden animate-fade-in space-y-6">
-
-      <div id="readonly-banner" class="hidden rounded-2xl border border-sky-200 bg-sky-50 text-sky-900 px-4 py-3 text-xs sm:text-sm flex items-center gap-2.5">
-        <i data-lucide="eye" class="w-4 h-4 shrink-0"></i>
-        <span><strong>Modo consulta:</strong> puede revisar gráficos, tablas y reportes. Para registrar asistencia debe <button type="button" onclick="openLogin(true)" class="underline font-bold">iniciar sesión como administrador</button>.</span>
-      </div>
 
       <!-- Filtros, acciones y KPIs -->
       <div class="card p-4 sm:p-5 space-y-4">
@@ -507,7 +582,7 @@
               <p id="chart-subtitle" class="text-xs text-slate-500">Comportamiento por curso o estudiante individual</p>
             </div>
             <div class="flex flex-wrap items-center gap-2">
-              <select id="analytics-subject-select" onchange="renderAnalyticsPanel()" class="rounded-xl border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-800 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 max-w-[220px]"></select>
+              <select id="analytics-subject-select" onchange="renderAnalyticsPanel()" class="rounded-xl border border-slate-300 px-3 py-1.5 text-xs font-bold text-slate-800 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 w-full sm:w-auto sm:max-w-[220px]"></select>
               <div id="mode-group" class="inline-flex bg-slate-100 p-1 rounded-xl border border-slate-200/70">
                 <button id="btn-mode-dots" type="button" onclick="setChartMode('dots')" class="seg-btn px-3 py-1.5 rounded-lg text-xs font-bold transition">Puntos</button>
                 <button id="btn-mode-area" type="button" onclick="setChartMode('area')" class="seg-btn px-3 py-1.5 rounded-lg text-xs font-bold transition">Área</button>
@@ -520,7 +595,7 @@
             </div>
           </div>
 
-          <div class="relative h-[330px] w-full">
+          <div class="relative h-[270px] sm:h-[330px] w-full">
             <canvas id="chart-main"></canvas>
             <div data-empty class="hidden absolute inset-0 items-center justify-center text-xs text-slate-400 bg-white">Sin datos suficientes para graficar.</div>
           </div>
@@ -588,7 +663,7 @@
     </section>
   </main>
 
-  <footer class="bg-white border-t border-slate-200/80 py-4 mt-8">
+  <footer data-mark-only class="hidden bg-white border-t border-slate-200/80 py-4 mt-8">
     <div class="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
       <span><strong>CEIA Inapewma Coronel</strong> — Plataforma de Gestión y Proyección de Asistencia</span>
       <span>Educación de Jóvenes y Adultos · Coronel, Chile</span>
@@ -810,15 +885,13 @@
     }
 
     let loginOnSuccess = null;
-    function openLogin(dismissible = true, onSuccess = null) {
+    /** Muestra la pantalla de acceso (obligatoria: no existe modo visita). */
+    function openLogin(_unused, onSuccess = null) {
       if (DEMO) return;
       loginOnSuccess = onSuccess;
-      $('login-cancel').classList.toggle('hidden', !dismissible);
-      $('login-subtitle').textContent = dismissible
-        ? 'Ingrese sus credenciales para cargar y modificar datos.'
-        : 'Este sistema requiere iniciar sesión para consultar los datos.';
       $('login-error').classList.add('hidden');
       $('login-pass').value = '';
+      showLoginView('login');
       const modal = $('login-modal');
       modal.classList.remove('hidden');
       modal.classList.add('flex');
@@ -831,16 +904,79 @@
       modal.classList.remove('flex');
       loginOnSuccess = null;
     }
-    function toggleLoginPass() {
-      const i = $('login-pass');
+    function toggleLoginPass(id = 'login-pass') {
+      const i = $(id);
       i.type = i.type === 'password' ? 'text' : 'password';
+    }
+    function setMsg(el, text, ok) {
+      el.textContent = text;
+      el.className = `text-xs font-semibold rounded-lg px-3 py-2 border ${ok ? 'text-emerald-800 bg-emerald-50 border-emerald-200' : 'text-red-600 bg-red-50 border-red-200'}`;
+    }
+    function showLoginView(view) {
+      const prev = $('login-user').value || $('forgot-user').value || $('reset-user').value;
+      ['login', 'forgot', 'reset'].forEach(v => $(`${v}-form`).classList.toggle('hidden', v !== view));
+      if (view === 'forgot') { $('forgot-user').value = $('forgot-user').value || prev; $('forgot-msg').className = 'hidden'; }
+      if (view === 'reset') { $('reset-user').value = $('reset-user').value || prev; $('reset-msg').className = 'hidden'; }
+      refreshIcons();
+    }
+
+    async function submitForgot(ev) {
+      ev.preventDefault();
+      const btn = $('forgot-btn'), msg = $('forgot-msg');
+      btn.disabled = true;
+      try {
+        const res = await callApi('requestReset', { user: $('forgot-user').value }, false);
+        if (!res.ok) {
+          const m = { DEMASIADAS_SOLICITUDES: 'Ya solicitó varios códigos. Espere unos minutos e intente de nuevo.', CORREO_NO_ENVIADO: 'No se pudo enviar el correo. Contacte a Inspectoría General.' };
+          setMsg(msg, m[res.error] || 'No fue posible enviar el código.', false);
+          return;
+        }
+        setMsg(msg, 'Si la cuenta existe, enviamos un código de 6 dígitos al correo registrado. Revise su bandeja de entrada y spam.', true);
+        $('reset-user').value = $('forgot-user').value;
+        setTimeout(() => showLoginView('reset'), 1600);
+      } catch (e) {
+        setMsg(msg, 'No se pudo conectar con el servidor. Intente nuevamente.', false);
+      } finally { btn.disabled = false; }
+    }
+
+    async function submitReset(ev) {
+      ev.preventDefault();
+      const btn = $('reset-btn'), msg = $('reset-msg');
+      if ($('reset-pass').value !== $('reset-pass2').value) { setMsg(msg, 'Las contraseñas no coinciden.', false); return; }
+      btn.disabled = true;
+      try {
+        const res = await callApi('resetPassword', { user: $('reset-user').value, code: $('reset-code').value.trim(), newPass: $('reset-pass').value }, false);
+        if (!res.ok) {
+          const m = { CODIGO_INVALIDO: 'Código inválido o vencido. Solicite uno nuevo.', CLAVE_CORTA: 'La contraseña debe tener al menos 8 caracteres.' };
+          setMsg(msg, m[res.error] || 'No fue posible cambiar la contraseña.', false);
+          return;
+        }
+        $('login-user').value = $('reset-user').value;
+        ['reset-code', 'reset-pass', 'reset-pass2'].forEach(id => { $(id).value = ''; });
+        showLoginView('login');
+        const le = $('login-error');
+        le.textContent = 'Contraseña actualizada. Ya puede iniciar sesión.';
+        le.className = 'text-xs font-semibold rounded-lg px-3 py-2 border text-emerald-800 bg-emerald-50 border-emerald-200';
+      } catch (e) {
+        setMsg(msg, 'No se pudo conectar con el servidor. Intente nuevamente.', false);
+      } finally { btn.disabled = false; }
+    }
+
+    /** Borra de la memoria todos los datos (confidencialidad al cerrar sesión). */
+    function wipeData() {
+      Object.assign(appState, { courses: [], students: [], configs: {}, attendance: {}, selectedManageCourseId: null });
+      usersCache = [];
+      clearCharts();
+      ['attendance-table-wrapper', 'synthesis-table-container', 'manage-students-list', 'retired-students-list', 'users-list', 'pdf-preview-sheet-container']
+        .forEach(id => { const el = $(id); if (el) el.innerHTML = ''; });
+      ['view-course-select', 'manage-course-select', 'config-course-select', 'analytics-subject-select'].forEach(id => { const el = $(id); if (el) el.innerHTML = ''; });
     }
 
     async function submitLogin(ev) {
       ev.preventDefault();
       const btn = $('login-btn');
       const errBox = $('login-error');
-      errBox.classList.add('hidden');
+      errBox.className = 'hidden';
       btn.disabled = true;
       try {
         const res = await callApi('login', { user: $('login-user').value, pass: $('login-pass').value }, false);
@@ -850,22 +986,29 @@
             BLOQUEADO: 'Demasiados intentos fallidos. Espere unos minutos e intente nuevamente.'
           };
           errBox.textContent = msgs[res.error] || 'No fue posible iniciar sesión.';
-          errBox.classList.remove('hidden');
+          errBox.className = 'text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2';
           return;
         }
         session.token = res.token; session.user = res.user; setSessionRole(res.rol, res.principal);
         saveSession();
         $('login-pass').value = '';
         const cb = loginOnSuccess;
+        const st = await loadAll();
+        if (st !== 'ok') {
+          clearSession();
+          errBox.textContent = 'Sesión válida, pero no se pudieron cargar los datos. Intente nuevamente.';
+          errBox.className = 'text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2';
+          return;
+        }
         closeLogin();
-        await loadAll();          // recarga con datos de administrador (incluye RUT)
         applyAuthUI();
-        showToast(`Sesión iniciada: ${session.user}.`);
+        switchMainTab(session.admin ? 'inspectoria' : 'visualizacion');
+        showToast(`Bienvenido/a, ${session.user}.`);
         if (failedOps.length) retryFailed();
-        if (typeof cb === 'function') cb();
+        if (typeof cb === 'function' && session.admin) cb();
       } catch (e) {
         errBox.textContent = 'No se pudo conectar con el servidor. Intente nuevamente.';
-        errBox.classList.remove('hidden');
+        errBox.className = 'text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2';
       } finally {
         btn.disabled = false;
       }
@@ -881,33 +1024,53 @@
       const token = session.token;
       clearSession();
       if (token && !DEMO) { callApi('logout', { token }, false).catch(() => {}); }
-      const status = await loadAll();    // vuelve a la vista de visitante (sin RUT)
+      if (DEMO) return;
+      wipeData();
       applyAuthUI();
-      if (status === 'ok') {
-        switchMainTab('visualizacion');
-        showToast('Sesión cerrada.', 'info');
-      }
+      openLogin();
     }
 
     function expireSession() {
       clearSession();
+      wipeData();
       applyAuthUI();
-      switchMainTab('visualizacion');
-      showToast('Su sesión expiró. Vuelva a iniciar sesión para guardar los cambios pendientes.', 'warning');
-      openLogin(true);
+      showToast('Su sesión expiró. Vuelva a iniciar sesión para continuar.', 'warning');
+      openLogin();
     }
 
     function applyAuthUI() {
       const { admin, canMark, principal } = session;
       document.querySelectorAll('[data-mark-only]').forEach(el => el.classList.toggle('hidden', !canMark));
       document.querySelectorAll('[data-principal-only]').forEach(el => el.classList.toggle('hidden', !principal));
-      document.querySelectorAll('[data-guest-only]').forEach(el => el.classList.toggle('hidden', canMark || DEMO));
       $('tab-lock').classList.toggle('hidden', admin);
-      $('readonly-banner').classList.toggle('hidden', canMark);
-      $('auth-user-name').textContent = `${session.user || 'Administrador'}${session.role === 'registro' ? ' (registro)' : ''}`;
+      $('auth-user-name').textContent = session.user || '';
+      $('auth-role').textContent = DEMO ? 'Modo demostración · datos solo en este equipo'
+        : session.principal ? 'Cuenta principal · acceso total'
+        : session.role === 'admin' ? 'Administrador'
+        : session.role === 'registro' ? 'Registro de asistencia' : '';
       $('btn-logout').classList.toggle('hidden', DEMO);
       if (!admin) $('section-inspectoria').classList.add('hidden');   // solo administradores ven la gestión
       refreshIcons();
+    }
+
+    // ---------- Aplicación instalable (PWA) ----------
+    let deferredInstall = null;
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredInstall = e; $('btn-install').classList.remove('hidden'); });
+    window.addEventListener('appinstalled', () => { deferredInstall = null; $('btn-install').classList.add('hidden'); showToast('Aplicación instalada.'); });
+    async function installApp() {
+      if (deferredInstall) {
+        deferredInstall.prompt();
+        await deferredInstall.userChoice;
+        deferredInstall = null;
+        $('btn-install').classList.add('hidden');
+      } else if (isIOS) {
+        showToast('En iPhone/iPad: toque el botón Compartir y elija "Añadir a pantalla de inicio".', 'info');
+      }
+    }
+    if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
     }
 
     // =========================================================================
@@ -974,6 +1137,13 @@
     }
 
     async function bootLoad() {
+      // Sin sesión no se pide ningún dato: se muestra directamente el acceso.
+      if (!session.token) {
+        $('load-overlay').classList.add('hidden');
+        applyAuthUI();
+        openLogin();
+        return;
+      }
       $('load-error').classList.add('hidden');
       $('load-spinner').classList.remove('hidden');
       const st = await loadAll();
@@ -984,15 +1154,16 @@
       }
       $('load-overlay').classList.add('hidden');
       applyAuthUI();
-      switchMainTab('visualizacion');
-      if (st === 'login') openLogin(false);
+      if (st === 'login') { openLogin(); return; }
+      switchMainTab(session.admin ? 'inspectoria' : 'visualizacion');
     }
 
     // =========================================================================
     // NAVEGACIÓN
     // =========================================================================
-    const NAV_ON = 'flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all bg-brand-700 text-white shadow-sm';
-    const NAV_OFF = 'flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold transition-all text-slate-600 hover:bg-white';
+    const NAV_BASE = 'flex-1 lg:flex-none justify-center flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all';
+    const NAV_ON = `${NAV_BASE} bg-brand-700 text-white shadow-sm`;
+    const NAV_OFF = `${NAV_BASE} text-slate-600 hover:bg-white`;
 
     function switchMainTab(tab) {
       if (tab === 'inspectoria' && !session.admin) {
@@ -1316,7 +1487,7 @@
         ? `<div class="p-5 text-center text-xs text-slate-400">Aún no hay otros usuarios. Cree el primero con el formulario.</div>`
         : usersCache.map((u, i) => `
           <div class="px-4 py-2.5 flex items-center justify-between gap-3 hover:bg-slate-50">
-            <div class="min-w-0"><div class="text-sm font-semibold text-slate-800 truncate">${esc(u.usuario)}</div><div class="text-[11px] text-slate-500">${esc(ROLE_LABEL[u.rol] || u.rol)}</div></div>
+            <div class="min-w-0"><div class="text-sm font-semibold text-slate-800 truncate">${esc(u.usuario)}</div><div class="text-[11px] text-slate-500 truncate">${esc(ROLE_LABEL[u.rol] || u.rol)} · ${esc(u.correo || 'sin correo')}</div></div>
             <div class="flex items-center gap-1.5 shrink-0">
               <button type="button" onclick="editUser(${i})" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-brand-700 bg-brand-50 hover:bg-brand-100 border border-brand-100">Editar</button>
               <button type="button" onclick="handleDeleteUser(${i})" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200/70">Eliminar</button>
@@ -1325,25 +1496,25 @@
     }
 
     function resetUserForm() {
-      $('user-name').value = ''; $('user-pass').value = ''; $('user-role').value = 'registro';
+      $('user-name').value = ''; $('user-pass').value = ''; $('user-email').value = ''; $('user-role').value = 'registro';
       $('user-name').readOnly = false;
     }
 
     function editUser(i) {
       const u = usersCache[i]; if (!u) return;
       $('user-name').value = u.usuario; $('user-name').readOnly = true;
-      $('user-role').value = u.rol; $('user-pass').value = '';
+      $('user-role').value = u.rol; $('user-pass').value = ''; $('user-email').value = u.correo || '';
       $('user-pass').focus();
     }
 
     async function handleSaveUser(ev) {
       ev.preventDefault();
       if (!session.principal || DEMO) { showToast('Solo la cuenta principal puede administrar usuarios.', 'warning'); return; }
-      const usuario = $('user-name').value.trim(), clave = $('user-pass').value, rol = $('user-role').value;
+      const usuario = $('user-name').value.trim(), clave = $('user-pass').value, rol = $('user-role').value, correo = $('user-email').value.trim();
       try {
-        const res = await callApi('saveUser', { userData: { usuario, clave, rol } });
+        const res = await callApi('saveUser', { userData: { usuario, clave, rol, correo } });
         if (!res.ok) {
-          const msgs = { CLAVE_CORTA: 'La contraseña debe tener al menos 8 caracteres.', USUARIO_INVALIDO: 'Nombre de usuario inválido (mínimo 3 caracteres).', USUARIO_RESERVADO: 'Ese nombre está reservado para la cuenta principal.', SESION_EXPIRADA: 'Su sesión expiró.' };
+          const msgs = { CLAVE_CORTA: 'La contraseña debe tener al menos 8 caracteres.', USUARIO_INVALIDO: 'Nombre de usuario inválido (mínimo 3 caracteres).', USUARIO_RESERVADO: 'Ese nombre está reservado para la cuenta principal.', CORREO_INVALIDO: 'Ingrese un correo válido.', SESION_EXPIRADA: 'Su sesión expiró.' };
           if (res.error === 'SESION_EXPIRADA') return expireSession();
           showToast(msgs[res.error] || `No se pudo guardar el usuario (${res.error}).`, 'error');
           return;
@@ -1464,8 +1635,8 @@
       return 'bg-red-50 text-red-700 border-red-200';
     }
 
-    const CELL_ON = 'w-6 h-6 rounded-md text-xs font-bold flex items-center justify-center mx-auto transition-all bg-emerald-500 text-white shadow-xs';
-    const CELL_OFF = 'w-6 h-6 rounded-md text-xs font-bold flex items-center justify-center mx-auto transition-all bg-white border border-slate-300 text-slate-300';
+    const CELL_ON = 'w-7 h-7 sm:w-6 sm:h-6 rounded-md text-xs font-bold flex items-center justify-center mx-auto transition-all bg-emerald-500 text-white shadow-xs';
+    const CELL_OFF = 'w-7 h-7 sm:w-6 sm:h-6 rounded-md text-xs font-bold flex items-center justify-center mx-auto transition-all bg-white border border-slate-300 text-slate-300';
 
     function setKpiAvg(avg) {
       $('kpi-avg-attendance').textContent = `${avg.toFixed(1)}%`;
@@ -1545,7 +1716,7 @@
         return `
           <tr class="border-b border-slate-200/80 hover:bg-sky-50/30 transition">
             <td class="sticky-col bg-white px-4 py-2 text-xs sm:text-sm font-semibold text-slate-800 border-r-2 border-slate-200 whitespace-nowrap">
-              <div class="flex items-center gap-2"><span class="text-[11px] font-bold text-slate-400 w-5">${idx + 1}.</span><span class="truncate max-w-[200px]" title="${esc(stu.name)}">${esc(stu.name)}</span></div>
+              <div class="flex items-center gap-2"><span class="text-[11px] font-bold text-slate-400 w-5">${idx + 1}.</span><span class="truncate max-w-[105px] sm:max-w-[200px]" title="${esc(stu.name)}">${esc(stu.name)}</span></div>
             </td>
             ${cellsHtml}
           </tr>`;
@@ -1558,7 +1729,7 @@
         <table class="w-full border-collapse text-left">
           <thead>
             <tr>
-              <th rowspan="3" class="sticky-header-col bg-ine-ink text-white px-4 py-3 text-xs font-extrabold uppercase tracking-wider border-r-2 border-slate-700 min-w-[230px]">Estudiantes (${month})</th>
+              <th rowspan="3" class="sticky-header-col bg-ine-ink text-white px-4 py-3 text-xs font-extrabold uppercase tracking-wider border-r-2 border-slate-700 min-w-[150px] sm:min-w-[230px]">Estudiantes (${month})</th>
               ${weekHeaderCells}
               <th rowspan="3" class="px-3 py-3 text-center text-xs font-extrabold uppercase tracking-wider bg-emerald-800 text-white border-l-2 border-slate-300 min-w-[92px]">% Mensual<br><span class="text-[10px] font-normal text-emerald-200">Consolidado</span></th>
             </tr>
@@ -2170,7 +2341,7 @@
       const synthesisTableHtml = $('synthesis-table-container').innerHTML;
 
       const html = `
-        <div style="width: 760px; padding: 18px 22px; background-color: #ffffff; font-family: 'Inter', Arial, sans-serif; color: #0f172a; box-sizing: border-box;">
+        <div style="width: 730px; padding: 0; background-color: #ffffff; font-family: 'Inter', Arial, sans-serif; color: #0f172a; box-sizing: border-box;">
           <style>
             .portrait-pdf-table table { width: 100%; border-collapse: collapse; table-layout: auto; }
             .portrait-pdf-table th { padding: 4.5px 6px !important; font-size: 8.5px !important; background-color: #f1f5f9 !important; color: #334155 !important; border-bottom: 1.5px solid #cbd5e1 !important; position: static !important; white-space: nowrap; }
@@ -2182,7 +2353,7 @@
 
           <div style="border-bottom: 2px solid #0b2f4d; padding-bottom: 8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; gap: 12px;">
             <div style="display:flex; align-items:center; gap: 12px; flex:1;">
-              <img src="${LOGO}" alt="Insignia" style="height: 52px; width: auto;" />
+              <img src="${LOGO}" alt="Insignia CEIA Inapewma" style="height: 62px; width: auto; display: block;" />
               <div>
                 <div style="font-size: 8.5px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; color: #085a93; margin-bottom: 2px;">Educación de Jóvenes y Adultos · Coronel, Región del Biobío</div>
                 <h1 style="font-size: 15px; font-weight: 800; color: #0f172a; margin: 0; line-height: 1.2;">CEIA INAPEWMA CORONEL — Informe de Asistencia</h1>
@@ -2204,7 +2375,7 @@
               </div>`).join('')}
           </div>
 
-          <div style="border: 1px solid #cbd5e1; border-radius: 9px; padding: 8px 10px; background: #ffffff; margin-bottom: 10px;">
+          <div class="avoid-break" style="page-break-inside: avoid; border: 1px solid #cbd5e1; border-radius: 9px; padding: 8px 10px; background: #ffffff; margin-bottom: 10px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; border-bottom: 1px solid #f1f5f9; padding-bottom: 4px;">
               <span style="font-size: 11px; font-weight: 800; color: #0f172a;">1. Evolución de Asistencia y Distribución</span>
               <span style="font-size: 8px; color: #475569; font-weight: 700;">
@@ -2231,7 +2402,7 @@
 
           <div style="margin-top: 8px; padding-top: 5px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; font-size: 8px; color: #64748b;">
             <span><strong>CEIA Inapewma Coronel</strong> — Plataforma de Gestión y Proyección de Asistencia</span>
-            <span>Meta Institucional: ≥ 85.0% · Documento Oficial</span>
+            <span>Meta Institucional: 85% o más · Documento Oficial</span>
           </div>
         </div>`;
 
@@ -2240,14 +2411,40 @@
       return { html, fileName: `Reporte_Asistencia_${safeSubject}_${periodTag}_CEIA_Inapewma.pdf` };
     }
 
+    // Márgenes de la hoja Carta (mm): superior, derecho, inferior, izquierdo
+    const PDF_MARGIN = [16, 11, 16, 11];
+    let lastReportHtml = '';
+
+    /** Espera a que todas las imágenes (insignia y gráficos) estén cargadas antes de capturar. */
+    async function waitForImages(root) {
+      await Promise.all([...root.querySelectorAll('img')].map(img =>
+        img.complete && img.naturalWidth ? null : new Promise(r => { img.onload = img.onerror = r; })));
+    }
+
+    /** Ajusta la hoja de vista previa al ancho disponible (celulares). */
+    function fitPreviewSheet() {
+      const sheet = $('pdf-preview-sheet-container');
+      const fit = $('pdf-preview-fit');
+      if (!sheet || !fit) return;
+      const avail = fit.parentElement.clientWidth - 8;
+      const scale = Math.min(1, avail / 814);
+      sheet.style.transform = `scale(${scale})`;
+      fit.style.width = `${814 * scale}px`;
+      fit.style.height = `${sheet.offsetHeight * scale}px`;
+    }
+    window.addEventListener('resize', fitPreviewSheet);
+
     async function openReportPreviewModal() {
       const reportData = await buildPortraitLetterReportData();
       if (!reportData) { showToast('No hay datos suficientes para generar la vista previa.', 'warning'); return; }
+      lastReportHtml = reportData.html;
       $('pdf-preview-sheet-container').innerHTML = reportData.html;
       const modal = $('pdf-preview-modal');
       modal.classList.remove('hidden');
       modal.classList.add('flex');
       refreshIcons();
+      await waitForImages($('pdf-preview-sheet-container'));
+      fitPreviewSheet();
     }
 
     function closeReportPreviewModal() {
@@ -2257,13 +2454,13 @@
     }
 
     function printPreviewReport() {
-      const sheet = $('pdf-preview-sheet-container');
-      if (!sheet || !sheet.innerHTML.trim()) return;
+      if (!lastReportHtml) return;
       const printWin = window.open('', '_blank', 'width=900,height=1100');
       if (!printWin) { showToast('Permita las ventanas emergentes para imprimir o use "Descargar PDF".', 'warning'); return; }
-      printWin.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8" /><title>Imprimir Reporte — CEIA Inapewma Coronel</title>
-        <style>@page { size: letter portrait; margin: 6mm; } body { margin: 0; padding: 0; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }</style>
-        </head><body>${sheet.innerHTML}
+      const [mt, mr, mb, ml] = PDF_MARGIN;
+      printWin.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8" /><title>Informe de Asistencia — CEIA Inapewma Coronel</title>
+        <style>@page { size: letter portrait; margin: ${mt}mm ${mr}mm ${mb}mm ${ml}mm; } html, body { margin: 0; padding: 0; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; } .avoid-break, tr { page-break-inside: avoid; }</style>
+        </head><body>${lastReportHtml}
         <script>window.onload = function () { setTimeout(function () { window.print(); window.close(); }, 250); };<\/script>
         </body></html>`);
       printWin.document.close();
@@ -2272,6 +2469,27 @@
     async function downloadReportFromPreview() {
       closeReportPreviewModal();
       await exportAnalyticsReportPDF();
+    }
+
+    /** Encabezado con insignia (páginas 2 en adelante) y pie con numeración, dentro de los márgenes. */
+    function decoratePdfPages(pdf) {
+      const n = pdf.internal.getNumberOfPages();
+      const W = pdf.internal.pageSize.getWidth(), H = pdf.internal.pageSize.getHeight();
+      const [, mr, , ml] = PDF_MARGIN;
+      for (let i = 1; i <= n; i++) {
+        pdf.setPage(i);
+        if (i > 1 && LOGO) {
+          try { pdf.addImage(LOGO, 'JPEG', W - mr - 16.5, 4.5, 16.5, 16.5 / 1.795); } catch (e) { /* sin insignia */ }
+          pdf.setFont('helvetica', 'bold'); pdf.setFontSize(9); pdf.setTextColor(15, 23, 42);
+          pdf.text('CEIA INAPEWMA CORONEL - Informe de Asistencia', ml, 9.5);
+          pdf.setDrawColor(11, 47, 77); pdf.setLineWidth(0.4); pdf.line(ml, 13.5, W - mr, 13.5);
+        }
+        pdf.setDrawColor(203, 213, 225); pdf.setLineWidth(0.2); pdf.line(ml, H - 12, W - mr, H - 12);
+        pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7.5); pdf.setTextColor(100, 116, 139);
+        pdf.text('CEIA Inapewma Coronel - Plataforma de Gestion de Asistencia - Documento Oficial', ml, H - 8);
+        pdf.text(`Pagina ${i} de ${n}`, W - mr, H - 8, { align: 'right' });
+      }
+      return pdf;
     }
 
     async function exportAnalyticsReportPDF() {
@@ -2288,15 +2506,16 @@
         host.style.cssText = 'position:fixed;left:-10000px;top:0;z-index:-1;background:#fff;';
         host.innerHTML = reportData.html;
         document.body.appendChild(host);
-        await new Promise(r => requestAnimationFrame(() => setTimeout(r, 150)));
+        await waitForImages(host);            // la insignia y los gráficos deben estar cargados
+        await new Promise(r => requestAnimationFrame(() => setTimeout(r, 120)));
         await html2pdf().set({
-          margin: [5, 5, 5, 5],
+          margin: PDF_MARGIN,                 // [superior, izquierdo, inferior, derecho] en mm
           filename: reportData.fileName,
-          image: { type: 'png', quality: 1.0 },
-          html2canvas: { scale: 2.5, useCORS: true, logging: false, backgroundColor: '#ffffff', windowWidth: 820 },
+          image: { type: 'jpeg', quality: 0.96 },
+          html2canvas: { scale: 2.2, useCORS: true, logging: false, backgroundColor: '#ffffff', windowWidth: 800, scrollX: 0, scrollY: 0 },
           jsPDF: { unit: 'mm', format: 'letter', orientation: 'portrait' },
-          pagebreak: { mode: ['avoid-all'] }
-        }).from(host.firstElementChild).save();
+          pagebreak: { mode: ['css', 'legacy'], avoid: ['tr', '.avoid-break'] }
+        }).from(host.firstElementChild).toPdf().get('pdf').then(decoratePdfPages).save();
         showToast(`Reporte PDF "${reportData.fileName}" descargado en formato Carta Vertical.`);
       } catch (err) {
         console.error('Error generando PDF:', err);
@@ -2313,13 +2532,9 @@
     // ARRANQUE
     // =========================================================================
     window.addEventListener('DOMContentLoaded', () => {
-      // Insignia en todas las vistas + favicon
+      // Insignia en todas las vistas
       document.querySelectorAll('img[data-logo]').forEach(img => { img.src = LOGO; });
-      if (LOGO) {
-        const link = document.createElement('link');
-        link.rel = 'icon'; link.href = LOGO;
-        document.head.appendChild(link);
-      }
+      if (isIOS && !isStandalone) $('btn-install').classList.remove('hidden');
       fillMonthSelects();
       setSegActive('scope-group', 'btn-scope-weekly');
       setSegActive('mode-group', 'btn-mode-dots');
@@ -2334,7 +2549,7 @@
         setSync('demo');
         applyAuthUI();
         renderAll();
-        switchMainTab('visualizacion');
+        switchMainTab('inspectoria');
       } else {
         loadSession();
         bootLoad();
