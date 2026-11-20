@@ -13,6 +13,9 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" type="image/png" href="icons/favicon.png" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <!-- Política de seguridad: solo se ejecutan scripts propios y de las librerías listadas; los datos solo viajan a Apps Script -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://script.google.com https://script.googleusercontent.com; object-src 'none'; base-uri 'none'; form-action 'self'" />
+  <meta name="referrer" content="no-referrer" />
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com/3.4.16"></script>
   <!-- Google Fonts: Inter -->
@@ -763,7 +766,10 @@
         <div class="px-5 py-3.5 bg-slate-50/80 border-b border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
             <h3 class="text-sm sm:text-base font-bold text-slate-900">Planilla Mensual de Registro por Bloques</h3>
-            <p class="text-xs text-slate-500">Haga clic en cada bloque para registrar asistencia o en el encabezado del día para marcar la jornada completa.</p>
+            <p class="text-xs text-slate-500">Clic en cada bloque para registrar asistencia o en el encabezado del día para marcar la jornada completa.</p>
+            <p data-mark-only class="hidden text-xs text-slate-500 mt-1 flex-wrap items-center gap-x-3 gap-y-1">
+              <span><strong class="inline-block w-4 h-4 rounded bg-amber-400 text-white text-[10px] text-center leading-4 align-middle">J</strong> <strong>Clic derecho</strong> en un bloque = inasistencia justificada solo de ese bloque (no se descuenta del %).</span>
+            </p>
           </div>
           <span class="text-xs font-semibold text-slate-500">Desplace horizontalmente para ver todas las semanas →</span>
         </div>
@@ -1284,13 +1290,27 @@
       openLogin();
     }
 
-    function expireSession() {
+    function expireSession(msg) {
       clearSession();
       wipeData();
       applyAuthUI();
-      showToast('Su sesión expiró. Vuelva a iniciar sesión para continuar.', 'warning');
+      showToast(typeof msg === 'string' ? msg : 'Su sesión expiró. Vuelva a iniciar sesión para continuar.', 'warning');
       openLogin();
     }
+
+    // Cierre automático por inactividad (el servidor también la vence: ver INACTIVIDAD_SEGUNDOS en Code.gs)
+    const IDLE_LIMIT_MS = 30 * 60 * 1000;
+    let lastActivity = Date.now();
+    ['pointerdown', 'keydown', 'touchstart', 'scroll'].forEach(ev =>
+      window.addEventListener(ev, () => { lastActivity = Date.now(); }, { passive: true, capture: true }));
+    setInterval(() => {
+      if (!session.token || DEMO) return;
+      if (Date.now() - lastActivity > IDLE_LIMIT_MS) {
+        const token = session.token;
+        callApi('logout', { token }, false).catch(() => {});
+        expireSession('Sesión cerrada por inactividad. Vuelva a iniciar sesión.');
+      }
+    }, 20000);
 
     function applyAuthUI() {
       const { admin, canMark, principal } = session;
@@ -1466,16 +1486,17 @@
     function calculateStudentPercentages(courseId, month, studentId, cfg) {
       const config = cfg || getMonthConfig(courseId, month);
       const attMap = getStudentAttendanceMap(courseId, month, studentId);
-      const blocksPerWeek = config.daysPerWeek * config.blocksPerDay;
       const weeklyPercentages = [];
       for (let w = 0; w < config.weeks; w++) {
-        let attended = 0;
+        let attended = 0, justified = 0;
         for (let d = 0; d < config.daysPerWeek; d++) {
           for (let b = 0; b < config.blocksPerDay; b++) {
             if (attMap[`w${w}_d${d}_b${b}`]) attended++;
+            else if (attMap[`jw${w}_d${d}_b${b}`]) justified++;   // inasistencia justificada: no cuenta en contra
           }
         }
-        weeklyPercentages.push(blocksPerWeek > 0 ? (attended / blocksPerWeek) * 100 : 0);
+        const due = config.daysPerWeek * config.blocksPerDay - justified;   // bloques exigibles
+        weeklyPercentages.push(due > 0 ? (attended / due) * 100 : 100);
       }
       const monthlyPercentage = weeklyPercentages.length > 0
         ? weeklyPercentages.reduce((acc, v) => acc + v, 0) / weeklyPercentages.length : 0;
@@ -2045,10 +2066,10 @@
         for (let w = 0; w < cfg.weeks; w++) {
           for (let d = 0; d < cfg.daysPerWeek; d++) {
             for (let b = 0; b < cfg.blocksPerDay; b++) {
-              const isPresent = !!attMap[`w${w}_d${d}_b${b}`];
+              const st = cellState(attMap, w, d, b);
               const dayBorder = b === 0 ? 'border-l border-slate-300' : 'border-l border-slate-100';
-              const cls = isPresent ? `${CELL_ON} ${admin ? 'hover:bg-emerald-600' : ''}` : `${CELL_OFF} ${admin ? 'hover:border-sky-400 hover:text-sky-500' : ''}`;
-              cellsHtml += `<td class="p-1 text-center ${dayBorder}"><button type="button" ${admin ? `onclick="toggleBlockAttendance('${esc(stu.id)}', ${w}, ${d}, ${b}, this)"` : 'disabled tabindex="-1"'} class="${cls} ${admin ? '' : 'cursor-default'}">${isPresent ? '✓' : '·'}</button></td>`;
+              const args = `'${esc(stu.id)}', ${w}, ${d}, ${b}, this`;
+              cellsHtml += `<td class="p-1 text-center ${dayBorder}"><button type="button" ${admin ? `onclick="toggleBlockAttendance(${args})" oncontextmenu="return justifyBlock(event, ${args})"` : 'disabled tabindex="-1"'} class="${cellClass(st, admin)} ${admin ? '' : 'cursor-default'}">${cellGlyph(st)}</button></td>`;
             }
           }
           cellsHtml += `<td id="week-pct-${esc(stu.id)}-${w}" class="px-2 py-1.5 text-center text-xs font-extrabold bg-brand-50/50 text-brand-800 border-l border-brand-100">${weeklyPercentages[w].toFixed(1)}%</td>`;
@@ -2084,23 +2105,50 @@
       renderAnalyticsPanel();
     }
 
+    // Estado de un bloque: 'P' presente · 'J' inasistencia justificada · 'A' ausente
+    const CELL_JUST = 'w-7 h-7 sm:w-6 sm:h-6 rounded-md text-xs font-bold flex items-center justify-center mx-auto transition-all bg-amber-400 text-white shadow-xs';
+    function cellState(attMap, w, d, b) {
+      if (attMap[`w${w}_d${d}_b${b}`]) return 'P';
+      return attMap[`jw${w}_d${d}_b${b}`] ? 'J' : 'A';
+    }
+    function cellClass(st, admin) {
+      if (st === 'P') return `${CELL_ON} ${admin ? 'hover:bg-emerald-600' : ''}`;
+      if (st === 'J') return `${CELL_JUST} ${admin ? 'hover:bg-amber-500' : ''}`;
+      return `${CELL_OFF} ${admin ? 'hover:border-sky-400 hover:text-sky-500' : ''}`;
+    }
+    const cellGlyph = st => st === 'P' ? '✓' : st === 'J' ? 'J' : '·';
+
+    /** Clic izquierdo: presente / ausente (un justificado pasa a presente). Solo afecta a ese bloque. */
     function toggleBlockAttendance(studentId, weekIdx, dayIdx, blockIdx, btnEl) {
       if (!session.canMark) return;
       const courseId = $('view-course-select').value;
       const month = $('view-month-select').value;
-      const cfg = getMonthConfig(courseId, month);
       const attMap = getStudentAttendanceMap(courseId, month, studentId);
       const key = `w${weekIdx}_d${dayIdx}_b${blockIdx}`;
+      if (attMap[key]) delete attMap[key]; else { attMap[key] = true; delete attMap['j' + key]; }
+      afterCellChange(courseId, month, studentId, weekIdx, dayIdx, blockIdx, btnEl);
+    }
 
-      if (!attMap[key]) {
-        attMap[key] = true;
-        btnEl.className = `${CELL_ON} hover:bg-emerald-600`;
-        btnEl.textContent = '✓';
-      } else {
-        delete attMap[key];
-        btnEl.className = `${CELL_OFF} hover:border-sky-400 hover:text-sky-500`;
-        btnEl.textContent = '·';
-      }
+    /** Clic DERECHO: justifica (o quita la justificación) únicamente del bloque marcado, no del día completo. */
+    function justifyBlock(ev, studentId, weekIdx, dayIdx, blockIdx, btnEl) {
+      ev.preventDefault();
+      if (!session.canMark) return false;
+      const courseId = $('view-course-select').value;
+      const month = $('view-month-select').value;
+      const attMap = getStudentAttendanceMap(courseId, month, studentId);
+      const key = `w${weekIdx}_d${dayIdx}_b${blockIdx}`;
+      if (attMap['j' + key]) delete attMap['j' + key];
+      else { attMap['j' + key] = true; delete attMap[key]; }
+      afterCellChange(courseId, month, studentId, weekIdx, dayIdx, blockIdx, btnEl);
+      return false;
+    }
+
+    function afterCellChange(courseId, month, studentId, weekIdx, dayIdx, blockIdx, btnEl) {
+      const cfg = getMonthConfig(courseId, month);
+      const st = cellState(getStudentAttendanceMap(courseId, month, studentId), weekIdx, dayIdx, blockIdx);
+      btnEl.className = cellClass(st, true);
+      btnEl.textContent = cellGlyph(st);
+      btnEl.title = st === 'J' ? 'Inasistencia justificada (clic derecho para quitar)' : '';
 
       const { weeklyPercentages, monthlyPercentage } = calculateStudentPercentages(courseId, month, studentId, cfg);
       const weekCell = $(`week-pct-${studentId}-${weekIdx}`);
@@ -2149,7 +2197,7 @@
         const attMap = getStudentAttendanceMap(courseId, month, stu.id);
         for (let b = 0; b < cfg.blocksPerDay; b++) {
           const key = `w${weekIdx}_d${dayIdx}_b${b}`;
-          if (target) attMap[key] = true; else delete attMap[key];
+          if (target) { attMap[key] = true; delete attMap['j' + key]; } else delete attMap[key];
         }
       });
       markAttDirty(courseId, month, students.map(s => s.id));
@@ -2166,7 +2214,7 @@
       if (students.length === 0) return;
       students.forEach(stu => {
         const attMap = getStudentAttendanceMap(courseId, month, stu.id);
-        for (let w = 0; w < cfg.weeks; w++) for (let d = 0; d < cfg.daysPerWeek; d++) for (let b = 0; b < cfg.blocksPerDay; b++) attMap[`w${w}_d${d}_b${b}`] = true;
+        for (let w = 0; w < cfg.weeks; w++) for (let d = 0; d < cfg.daysPerWeek; d++) for (let b = 0; b < cfg.blocksPerDay; b++) { attMap[`w${w}_d${d}_b${b}`] = true; delete attMap[`jw${w}_d${d}_b${b}`]; }
       });
       markAttDirty(courseId, month, students.map(s => s.id));
       renderAttendanceSheet();
@@ -2209,7 +2257,7 @@
         const { weeklyPercentages, monthlyPercentage } = calculateStudentPercentages(courseId, month, stu.id, cfg);
         const row = [idx + 1, `"${stu.name.replace(/"/g, '""')}"`, stu.rut || ''];
         for (let w = 0; w < cfg.weeks; w++) {
-          for (let d = 0; d < cfg.daysPerWeek; d++) for (let b = 0; b < cfg.blocksPerDay; b++) row.push(attMap[`w${w}_d${d}_b${b}`] ? '1' : '0');
+          for (let d = 0; d < cfg.daysPerWeek; d++) for (let b = 0; b < cfg.blocksPerDay; b++) row.push(attMap[`w${w}_d${d}_b${b}`] ? '1' : attMap[`jw${w}_d${d}_b${b}`] ? 'J' : '0');
           row.push(`${weeklyPercentages[w].toFixed(1)}%`);
         }
         row.push(`${monthlyPercentage.toFixed(1)}%`);
@@ -2461,13 +2509,15 @@
       if (isIndividual) {
         const total = cfg.weeks * cfg.daysPerWeek * cfg.blocksPerDay;
         const map = getStudentAttendanceMap(courseId, month, selectedStudent.id);
-        let present = 0;
-        for (let w = 0; w < cfg.weeks; w++) for (let d = 0; d < cfg.daysPerWeek; d++) for (let b = 0; b < cfg.blocksPerDay; b++) if (map[`w${w}_d${d}_b${b}`]) present++;
+        let present = 0, just = 0;
+        for (let w = 0; w < cfg.weeks; w++) for (let d = 0; d < cfg.daysPerWeek; d++) for (let b = 0; b < cfg.blocksPerDay; b++) {
+          if (map[`w${w}_d${d}_b${b}`]) present++; else if (map[`jw${w}_d${d}_b${b}`]) just++;
+        }
         const pct = calculateStudentPercentages(courseId, month, selectedStudent.id, cfg).monthlyPercentage;
         return {
           title: 'Bloques del Estudiante', subtitle: `Asistidos vs. inasistidos en ${month}`,
-          labels: ['Bloques asistidos', 'Bloques inasistidos'], data: [present, total - present],
-          colors: ['#16a34a', '#ef4444'], center: `${pct.toFixed(1)}%`, centerLabel: 'Asistencia'
+          labels: ['Bloques asistidos', 'Bloques inasistidos', 'Justificados'], data: [present, total - present - just, just],
+          colors: ['#16a34a', '#ef4444', '#f59e0b'], center: `${pct.toFixed(1)}%`, centerLabel: 'Asistencia'
         };
       }
       let ok = 0, warn = 0, crit = 0, sum = 0;

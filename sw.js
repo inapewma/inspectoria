@@ -1,8 +1,8 @@
-/* Service worker — CEIA Inapewma Coronel
- * - Hace la página instalable y rápida de abrir.
- * - NUNCA guarda en caché los datos: las llamadas a Apps Script siempre van a la red.
+﻿/* Service worker â€” CEIA Inapewma Coronel
+ * - Hace la pÃ¡gina instalable y rÃ¡pida de abrir.
+ * - NUNCA guarda en cachÃ© los datos: las llamadas a Apps Script siempre van a la red.
  */
-const VERSION = 'ceia-v5';
+const VERSION = 'ceia-v6';
 const SHELL = ['./', 'index.html', 'config.js', 'logo.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 
@@ -22,10 +22,10 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;                       // las operaciones con datos (POST) pasan directo
   const url = new URL(req.url);
   if (url.hostname.endsWith('google.com') || url.hostname.endsWith('googleusercontent.com')) {
-    if (url.hostname === 'script.google.com' || url.hostname.endsWith('googleusercontent.com')) return; // API: sin caché
+    if (url.hostname === 'script.google.com' || url.hostname.endsWith('googleusercontent.com')) return; // API: sin cachÃ©
   }
 
-  // Archivos de la propia aplicación: red primero (siempre la versión más nueva), caché si no hay conexión
+  // Archivos de la propia aplicaciÃ³n: red primero (siempre la versiÃ³n mÃ¡s nueva), cachÃ© si no hay conexiÃ³n
   if (url.origin === self.location.origin) {
     event.respondWith(
       fetch(req).then((res) => {
@@ -37,7 +37,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Librerías externas (Tailwind, Chart.js, fuentes…): caché primero
+  // LibrerÃ­as externas (Tailwind, Chart.js, fuentesâ€¦): cachÃ© primero
   event.respondWith(
     caches.match(req).then((cached) => cached || fetch(req).then((res) => {
       if (res.ok || res.type === 'opaque') {
